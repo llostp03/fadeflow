@@ -7,6 +7,13 @@ const Stripe = require("stripe");
 
 dotenv.config();
 
+// Confirms runtime sees Render’s env (RENDER=true) and PORT; helps debug missing secrets.
+console.log(
+  "[startup] RENDER=%s PORT=%s",
+  process.env.RENDER ?? "(unset)",
+  process.env.PORT ?? "(unset)"
+);
+
 function resolvePort() {
   const raw = process.env.PORT;
   if (raw === undefined || raw === "") {
