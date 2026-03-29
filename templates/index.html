@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <form action="/echo" method="post">
+    <label for="name">Name</label>
+    <input id="name" name="name" type="text" required />
+    <button type="submit">Echo</button>
+  </form>
+</body>
+</html>
