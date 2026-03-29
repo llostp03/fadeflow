@@ -1,0 +1,10 @@
+{
+  "name": "flowfade-render-shim",
+  "private": true,
+  "description": "Render sometimes sets Root Directory to src; this forwards to stripe-backend.",
+  "scripts": {
+    "postinstall": "cd ../stripe-backend && npm install",
+    "start": "cd ../stripe-backend && npm start",
+    "build": "cd ../stripe-backend && npm install"
+  }
+}

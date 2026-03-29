@@ -1,0 +1,20 @@
+WHY RENDER FAILED
+=================
+Your API folders were NEVER pushed to GitHub — they were only on your PC (untracked in git).
+Render clones GitHub, so it had no stripe-backend/ and no src/package.json.
+
+FIX
+===
+1) Commit and push (from repo root):
+
+   git add package.json render.yaml src stripe-backend
+   git commit -m "Add Stripe API and Render config"
+   git push
+
+2) In Render: Root Directory = EMPTY
+   Build:  npm install
+   Start:  npm start
+
+3) Environment: STRIPE_SECRET_KEY = sk_...
+
+4) Redeploy.

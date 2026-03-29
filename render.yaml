@@ -1,0 +1,18 @@
+# Deploy from REPOSITORY ROOT (Root Directory in Render = empty).
+# build/start call the root package.json scripts, which cd into stripe-backend.
+# Set STRIPE_SECRET_KEY in Render Environment.
+
+services:
+  - type: web
+    name: flowfade-stripe-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: STRIPE_SECRET_KEY
+        sync: false

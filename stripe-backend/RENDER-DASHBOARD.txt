@@ -1,0 +1,24 @@
+Render Web Service — use these EXACT settings
+================================================
+
+1) Root Directory
+   MUST be EMPTY (not "src", not "stripe-backend" unless you know that folder exists on GitHub).
+
+2) Build Command:
+   npm install
+
+3) Start Command:
+   npm start
+
+4) Environment variable:
+   STRIPE_SECRET_KEY = your sk_test_... or sk_live_... key
+
+The repo root now has package.json — "npm start" runs the API in stripe-backend/.
+
+If you still see .../src/package.json errors, Render still has Root Directory = "src".
+Clear it, save, redeploy.
+
+5) Push to GitHub before deploy:
+   - package.json (repo root)
+   - stripe-backend/ (whole folder)
+   - src/package.json (optional shim if you ever need Root = src)
