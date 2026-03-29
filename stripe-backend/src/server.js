@@ -8,16 +8,29 @@ const Stripe = require("stripe");
 dotenv.config();
 
 const PORT = Number(process.env.PORT) || 4242;
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripeSecretKey =
+  typeof process.env.STRIPE_SECRET_KEY === "string"
+    ? process.env.STRIPE_SECRET_KEY.trim()
+    : "";
 
-if (!stripeSecretKey || !stripeSecretKey.startsWith("sk_")) {
+if (!stripeSecretKey.startsWith("sk_")) {
   console.error(
-    "Missing or invalid STRIPE_SECRET_KEY. Copy .env.example to .env and add your Stripe secret key."
+    "STRIPE_SECRET_KEY is missing or not a Stripe secret key (must start with sk_test_ or sk_live_)."
   );
+  console.error(
+    "Render: Dashboard → this service → Environment → Add STRIPE_SECRET_KEY. Paste the Secret key only (no quotes). Save, then Manual Deploy."
+  );
+  console.error("Local: copy stripe-backend/.env.example to .env and set STRIPE_SECRET_KEY.");
   process.exit(1);
 }
 
-const stripe = new Stripe(stripeSecretKey);
+let stripe;
+try {
+  stripe = new Stripe(stripeSecretKey);
+} catch (err) {
+  console.error("Stripe client failed to initialize:", err instanceof Error ? err.message : err);
+  process.exit(1);
+}
 
 const app = express();
 
