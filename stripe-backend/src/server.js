@@ -27,13 +27,20 @@ const stripeSecretKey =
     : "";
 
 if (!stripeSecretKey.startsWith("sk_")) {
+  const stripeEnvNames = Object.keys(process.env).filter((k) => /stripe/i.test(k));
   console.error(
-    "STRIPE_SECRET_KEY is missing or not a Stripe secret key (must start with sk_test_ or sk_live_)."
+    "STRIPE_SECRET_KEY is missing, empty, or not a Stripe secret key (must start with sk_test_ or sk_live_)."
   );
+  if (stripeEnvNames.length) {
+    console.error("Found env var names containing 'stripe' (values hidden):", stripeEnvNames.join(", "));
+  } else {
+    console.error("No environment variable name contains 'stripe' — STRIPE_SECRET_KEY is not set in Render.");
+  }
   console.error(
-    "Render: Dashboard → this service → Environment → Add STRIPE_SECRET_KEY. Paste the Secret key only (no quotes). Save, then Manual Deploy."
+    "Render: open THIS web service → Environment → Add STRIPE_SECRET_KEY = full Secret key from Stripe (Developers → API keys). Save, then Manual Deploy."
   );
-  console.error("Local: copy stripe-backend/.env.example to .env and set STRIPE_SECRET_KEY.");
+  console.error("If STRIPE_SECRET_KEY is already listed but the value box is empty, paste the key and save.");
+  console.error("Local: stripe-backend/.env with STRIPE_SECRET_KEY=sk_test_...");
   process.exit(1);
 }
 

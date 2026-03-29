@@ -14,5 +14,4 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-      - key: STRIPE_SECRET_KEY
-        sync: false
+# Add STRIPE_SECRET_KEY only in the Render dashboard (Secrets) — do not put it in this file.
