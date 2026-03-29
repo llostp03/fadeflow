@@ -7,7 +7,20 @@ const Stripe = require("stripe");
 
 dotenv.config();
 
-const PORT = Number(process.env.PORT) || 4242;
+function resolvePort() {
+  const raw = process.env.PORT;
+  if (raw === undefined || raw === "") {
+    return 4242;
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    console.error("Invalid PORT environment variable:", raw);
+    process.exit(1);
+  }
+  return n;
+}
+
+const PORT = resolvePort();
 const stripeSecretKey =
   typeof process.env.STRIPE_SECRET_KEY === "string"
     ? process.env.STRIPE_SECRET_KEY.trim()
@@ -111,7 +124,12 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-// Render and other hosts route traffic to the container; bind all interfaces.
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Stripe API listening on port ${PORT}`);
+// Render sets PORT (e.g. 10000). Must bind 0.0.0.0 or the port scan will time out.
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Stripe API listening on http://0.0.0.0:${PORT} (PORT from env: ${process.env.PORT ?? "unset, using 4242"})`);
+});
+
+server.on("error", (err) => {
+  console.error("Failed to bind HTTP server:", err.message);
+  process.exit(1);
 });
