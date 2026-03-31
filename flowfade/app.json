@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Flowfade",
+    "slug": "flowfade",
+    "scheme": "flowfade",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#050508"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.flowfade.app"
+    },
+    "android": {
+      "package": "com.flowfade.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#050508"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.flowfade.app",
+          "enableGooglePay": true
+        }
+      ]
+    ]
+  }
+}
