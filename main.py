@@ -5,7 +5,7 @@ app = FastAPI(title="FadeFlow")
 templates = Jinja2Templates(directory="templates")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
