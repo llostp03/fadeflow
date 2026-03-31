@@ -4,13 +4,376 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ title }}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      background: #0b0b0f;
+      color: #ffffff;
+      line-height: 1.6;
+    }
+
+    a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 1200px;
+      margin: auto;
+    }
+
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 22px 0;
+    }
+
+    .logo {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .logo span {
+      color: #d4af37;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      color: #d8d8d8;
+      font-size: 0.95rem;
+    }
+
+    .hero {
+      padding: 80px 0 60px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 40px;
+      align-items: center;
+    }
+
+    .hero h1 {
+      font-size: 3.4rem;
+      line-height: 1.08;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 span {
+      color: #d4af37;
+    }
+
+    .hero p {
+      color: #c6c6c6;
+      font-size: 1.1rem;
+      max-width: 580px;
+      margin-bottom: 30px;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      transition: 0.25s ease;
+    }
+
+    .btn-primary {
+      background: #d4af37;
+      color: #111;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      opacity: 0.95;
+    }
+
+    .btn-secondary {
+      border: 1px solid #333;
+      background: #14141a;
+      color: #fff;
+    }
+
+    .btn-secondary:hover {
+      border-color: #d4af37;
+      color: #d4af37;
+    }
+
+    .hero-card {
+      background: linear-gradient(180deg, #16161d, #0f0f14);
+      border: 1px solid #222;
+      border-radius: 24px;
+      padding: 30px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    }
+
+    .hero-card h3 {
+      font-size: 1.35rem;
+      margin-bottom: 20px;
+    }
+
+    .card-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .card-item {
+      background: #111117;
+      border: 1px solid #24242d;
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-item small {
+      display: block;
+      color: #9a9a9a;
+      margin-top: 4px;
+    }
+
+    .price {
+      color: #d4af37;
+      font-weight: 800;
+    }
+
+    .section {
+      padding: 70px 0;
+    }
+
+    .section-title {
+      font-size: 2.2rem;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .section-subtitle {
+      text-align: center;
+      color: #b6b6b6;
+      max-width: 700px;
+      margin: 0 auto 42px;
+    }
+
+    .features,
+    .services {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 22px;
+    }
+
+    .feature-card,
+    .service-card {
+      background: #121218;
+      border: 1px solid #23232c;
+      border-radius: 18px;
+      padding: 24px;
+    }
+
+    .feature-card h3,
+    .service-card h3 {
+      margin-bottom: 10px;
+      font-size: 1.15rem;
+    }
+
+    .feature-card p,
+    .service-card p {
+      color: #bdbdbd;
+      font-size: 0.96rem;
+    }
+
+    .service-price {
+      margin-top: 14px;
+      color: #d4af37;
+      font-weight: 800;
+      font-size: 1.05rem;
+    }
+
+    .cta {
+      background: linear-gradient(135deg, #d4af37, #f1d577);
+      color: #111;
+      border-radius: 24px;
+      padding: 45px 30px;
+      text-align: center;
+    }
+
+    .cta h2 {
+      font-size: 2.2rem;
+      margin-bottom: 14px;
+    }
+
+    .cta p {
+      max-width: 700px;
+      margin: 0 auto 24px;
+      font-size: 1.05rem;
+    }
+
+    .footer {
+      padding: 26px 0 40px;
+      color: #9a9a9a;
+      text-align: center;
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 900px) {
+      .hero,
+      .features,
+      .services {
+        grid-template-columns: 1fr;
+      }
+
+      .hero h1 {
+        font-size: 2.5rem;
+      }
+
+      .nav-links {
+        display: none;
+      }
+    }
+  </style>
 </head>
 <body>
-  <h1>{{ title }}</h1>
-  <form action="/echo" method="post">
-    <label for="name">Name</label>
-    <input id="name" name="name" type="text" required />
-    <button type="submit">Echo</button>
-  </form>
+  <div class="container">
+    <nav class="navbar">
+      <div class="logo">Clip<span>Flow</span></div>
+      <div class="nav-links">
+        <a href="#features">Why It Works</a>
+        <a href="#services">Services</a>
+        <a href="#book">Book</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div>
+        <h1>Book your next <span>fresh cut</span> in seconds.</h1>
+        <p>
+          ClipFlow helps barbers turn visits into repeat clients with a clean booking experience,
+          smooth payments, and less back-and-forth in DMs.
+        </p>
+
+        <div class="hero-buttons">
+          <a href="#book" class="btn btn-primary">Book Appointment</a>
+          <a href="#services" class="btn btn-secondary">See Services</a>
+        </div>
+      </div>
+
+      <div class="hero-card">
+        <h3>Popular Services</h3>
+        <div class="card-list">
+          <div class="card-item">
+            <div>
+              <strong>Fade + Beard</strong>
+              <small>Sharp fade with beard cleanup</small>
+            </div>
+            <div class="price">$40</div>
+          </div>
+
+          <div class="card-item">
+            <div>
+              <strong>Premium Cut</strong>
+              <small>Detailed cut with styling finish</small>
+            </div>
+            <div class="price">$55</div>
+          </div>
+
+          <div class="card-item">
+            <div>
+              <strong>House Call</strong>
+              <small>Convenient mobile appointment</small>
+            </div>
+            <div class="price">$90</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="section" id="features">
+    <div class="container">
+      <h2 class="section-title">Why clients will actually book</h2>
+      <p class="section-subtitle">
+        Built to feel premium, easy, and trustworthy — so customers book faster and come back more often.
+      </p>
+
+      <div class="features">
+        <div class="feature-card">
+          <h3>Fast Booking</h3>
+          <p>No long messages. Customers choose a service, time, and confirm in minutes.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Professional Brand Look</h3>
+          <p>A polished booking experience makes your business look more premium and more legit.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Easy Payments</h3>
+          <p>Deposits and full payments help reduce no-shows and lock in real appointments.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="services">
+    <div class="container">
+      <h2 class="section-title">Services</h2>
+      <p class="section-subtitle">
+        Set your offers clearly so customers know exactly what they’re paying for.
+      </p>
+
+      <div class="services">
+        <div class="service-card">
+          <h3>Basic Fade</h3>
+          <p>Clean fade with crisp finish for a sharp everyday look.</p>
+          <div class="service-price">$30</div>
+        </div>
+
+        <div class="service-card">
+          <h3>Fade + Beard</h3>
+          <p>Full grooming package with beard shaping and lineup.</p>
+          <div class="service-price">$40</div>
+        </div>
+
+        <div class="service-card">
+          <h3>Premium Experience</h3>
+          <p>Top-tier cut, styling, detail work, and premium customer care.</p>
+          <div class="service-price">$55</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="book">
+    <div class="container">
+      <div class="cta">
+        <h2>Ready to get booked?</h2>
+        <p>
+          Turn your barber business into a premium booking experience with cleaner scheduling,
+          stronger branding, and easier payments.
+        </p>
+        <a href="/login" class="btn btn-secondary" style="background:#111;color:#fff;border:none;">Get Started</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="container">
+    <footer class="footer">
+      © 2026 ClipFlow. Built for barbers who want to look premium and book more clients.
+    </footer>
+  </div>
 </body>
 </html>

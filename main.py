@@ -2,7 +2,9 @@ from fastapi import FastAPI, Form, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
-app = FastAPI(title="FadeFlow")
+APP_TITLE = "ClipFlow"
+
+app = FastAPI(title=APP_TITLE)
 templates = Jinja2Templates(directory="templates")
 
 
@@ -10,7 +12,7 @@ templates = Jinja2Templates(directory="templates")
 async def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "title": "FadeFlow"},
+        {"request": request, "title": APP_TITLE},
     )
 
 
