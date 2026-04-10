@@ -75,7 +75,8 @@ function AppNavigation() {
 
   // Barber / staff: email login → require ClipFlow Pro. Guests & barber demo (no user) keep full
   // access to one-time client booking (Payment Sheet) without a subscription.
-  const needsPaywall = user != null && user.subscription_status !== 'active';
+  const sub = String(user?.subscription_status ?? '').trim().toLowerCase();
+  const needsPaywall = user != null && sub !== 'active';
 
   return (
     <>
