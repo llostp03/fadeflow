@@ -68,6 +68,7 @@ try {
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const DB_PATH = path.join(REPO_ROOT, "bookings.db");
 const INDEX_HTML_PATH = path.join(REPO_ROOT, "templates", "index.html");
+const BARBER_LOGIN_HTML_PATH = path.join(REPO_ROOT, "templates", "barber-login.html");
 /** Static signup page shipped with stripe-backend (see `public/index.html`). */
 const SIGNUP_HTML_PATH = path.join(__dirname, "..", "public", "index.html");
 
@@ -119,7 +120,7 @@ function loadIndexTemplate() {
 
 /**
  * Serve the marketing page (Jinja placeholders replaced). Optionally scroll to #book
- * (used when the user opens /book, /login, /barber-login, etc.).
+ * (used when the user opens /book, /login, etc.). GET /barber-login serves barber-login.html.
  */
 function sendMarketingPage(res, { scrollToBook = false } = {}) {
   let html = loadIndexTemplate().replace(/\{\{\s*title\s*\}\}/g, "ClipFlow");
@@ -418,6 +419,14 @@ app.get("/signup/", (_req, res) => {
   res.sendFile(SIGNUP_HTML_PATH);
 });
 
+app.get("/barber-login", (_req, res) => {
+  res.sendFile(BARBER_LOGIN_HTML_PATH);
+});
+
+app.get("/barber-login/", (_req, res) => {
+  res.sendFile(BARBER_LOGIN_HTML_PATH);
+});
+
 /**
  * POST /signup
  * Body: { email: string, password: string, name?: string }
@@ -591,8 +600,6 @@ const BOOK_PATHS = [
   "/bookappointment/",
   "/login",
   "/login/",
-  "/barber-login",
-  "/barber-login/",
 ];
 
 app.get(BOOK_PATHS, (_req, res) => {

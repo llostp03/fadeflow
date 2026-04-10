@@ -16,6 +16,7 @@ APP_TITLE = "ClipFlow"
 
 DB_PATH = Path(__file__).resolve().parent / "bookings.db"
 SIGNUP_HTML_PATH = Path(__file__).resolve().parent / "stripe-backend" / "public" / "index.html"
+BARBER_LOGIN_HTML_PATH = Path(__file__).resolve().parent / "templates" / "barber-login.html"
 
 
 def init_db() -> None:
@@ -113,14 +114,21 @@ async def home_head():
 @app.get("/booking")
 @app.get("/bookappointment")
 @app.get("/login")
-@app.get("/barber-login")
-@app.get("/barber-login/")
 async def marketing_aliases():
     """
     These paths are linked from the landing page or shared URLs. Without explicit routes,
     FastAPI returns 404 JSON — which looks broken in the browser. Send users to the
     in-page booking section on the home page.
     """
+    return RedirectResponse(url="/#book", status_code=302)
+
+
+@app.get("/barber-login")
+@app.get("/barber-login/")
+async def barber_login_page():
+    """Dedicated barber sign-in instructions (same static file as Node stripe-backend)."""
+    if BARBER_LOGIN_HTML_PATH.is_file():
+        return FileResponse(BARBER_LOGIN_HTML_PATH)
     return RedirectResponse(url="/#book", status_code=302)
 
 

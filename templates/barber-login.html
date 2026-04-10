@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Barber sign in — ClipFlow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #0b0b0f;
+      color: #fff;
+      line-height: 1.65;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .wrap {
+      width: 90%;
+      max-width: 520px;
+      margin: auto;
+      padding: 48px 0;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      margin-bottom: 28px;
+    }
+    .logo span { color: #d4af37; }
+    h1 {
+      font-size: 1.85rem;
+      margin-bottom: 14px;
+    }
+    h1 span { color: #d4af37; }
+    p { color: #b8b8b8; margin-bottom: 18px; font-size: 1.02rem; }
+    ul { color: #b8b8b8; margin: 0 0 22px 1.1rem; }
+    li { margin-bottom: 10px; }
+    .card {
+      background: linear-gradient(180deg, #16161d, #0f0f14);
+      border: 1px solid #222;
+      border-radius: 16px;
+      padding: 22px 20px;
+      margin: 24px 0;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #d4af37;
+      margin-bottom: 14px;
+    }
+    .field { margin-bottom: 14px; }
+    .field input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 10px;
+      border: 1px solid #333;
+      background: #141418;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .field input::placeholder { color: #666; }
+    .field input:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+    form button[type="submit"] {
+      width: 100%;
+      padding: 14px 22px;
+      border: none;
+      border-radius: 12px;
+      background: #d4af37;
+      color: #111;
+      font-weight: 800;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+    form button[type="submit"]:hover:not(:disabled) {
+      opacity: 0.92;
+      transform: translateY(-1px);
+    }
+    form button[type="submit"]:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #888;
+      margin-top: 12px;
+    }
+    .btns { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+    a.btn {
+      display: inline-block;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: 0.2s ease;
+    }
+    .btn-primary {
+      background: #d4af37;
+      color: #111;
+    }
+    .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); }
+    .btn-secondary {
+      border: 1px solid #333;
+      background: #14141a;
+      color: #fff;
+    }
+    .btn-secondary:hover { border-color: #d4af37; color: #d4af37; }
+    footer {
+      margin-top: auto;
+      padding: 24px;
+      text-align: center;
+      color: #666;
+      font-size: 0.88rem;
+    }
+    footer a { color: #d4af37; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">Clip<span>Flow</span></div>
+    <h1>Barber <span>sign in</span></h1>
+    <p>
+      Use the <strong>ClipFlow</strong> app for the full experience (ClipFlow Pro checkout, booking tools).
+      Below you can sign in with your barber email in the browser to confirm your account works.
+    </p>
+
+    <div class="card">
+      <h2>Web sign in</h2>
+      <form id="loginForm">
+        <div class="field">
+          <input type="email" id="email" name="email" placeholder="Email" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <input type="password" id="password" name="password" placeholder="Password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" id="loginSubmit">Login</button>
+      </form>
+      <p class="hint">For subscriptions and payments, open the app after you verify login here.</p>
+    </div>
+
+    <ul>
+      <li>In the app: <strong>Contact</strong> → <strong>Barber sign in</strong>, or tap <strong>Barber login</strong> on the in-app site.</li>
+      <li>New here? <a href="/signup" style="color:#d4af37;">Create account</a></li>
+    </ul>
+
+    <div class="btns">
+      <a class="btn btn-secondary" href="/">Back to home</a>
+      <a class="btn btn-primary" href="/signup">Create account</a>
+    </div>
+  </div>
+  <footer>
+    <a href="/">ClipFlow</a> · Built for barbers
+  </footer>
+
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const btn = document.getElementById("loginSubmit");
+
+      if (!email || !password) {
+        alert("Please enter email and password.");
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+
+        let data = {};
+        const text = await res.text();
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = { detail: text.slice(0, 200) || "Invalid response from server." };
+        }
+
+        if (res.ok) {
+          alert("Login success — open the ClipFlow app to manage your subscription and bookings.");
+        } else {
+          const msg =
+            typeof data.detail === "string"
+              ? data.detail
+              : typeof data.error === "string"
+                ? data.error
+                : "Login failed.";
+          alert(msg);
+        }
+      } catch (err) {
+        alert(err && err.message ? err.message : "Network error. Try again.");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
