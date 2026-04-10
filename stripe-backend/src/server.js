@@ -394,7 +394,7 @@ app.post(
       console.error("[stripe-webhook] handler error:", e instanceof Error ? e.message : e);
     }
 
-    return res.sendStatus(200);
+    return res.json({ received: true });
   }
 );
 
