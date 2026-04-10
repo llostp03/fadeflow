@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ClipFlow — Sign up</title>
+  <title>ClipFlow — Get started</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -15,8 +15,8 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 24px;
+      justify-content: flex-start;
+      padding: 32px 24px 48px;
     }
     .card {
       max-width: 480px;
@@ -28,43 +28,175 @@
       text-align: center;
       box-shadow: 0 20px 50px rgba(0,0,0,0.35);
     }
-    .logo { font-size: 1.75rem; font-weight: 800; letter-spacing: 1px; margin-bottom: 12px; }
+    .logo { font-size: 1.75rem; font-weight: 800; letter-spacing: 1px; margin-bottom: 20px; }
     .logo span { color: #d4af37; }
-    h1 { font-size: 1.5rem; margin-bottom: 12px; }
-    p { color: #bdbdbd; font-size: 1rem; margin-bottom: 24px; }
+    h1 { font-size: 1.45rem; font-weight: 700; margin-bottom: 12px; }
+    .lead {
+      color: #bdbdbd;
+      font-size: 1rem;
+      margin-bottom: 28px;
+      line-height: 1.55;
+    }
     .actions { display: flex; flex-direction: column; gap: 12px; }
-    a.btn {
+    a.btn, button.btn {
       display: inline-block;
+      width: 100%;
       padding: 14px 24px;
       border-radius: 12px;
       font-weight: 700;
+      font-size: 1rem;
       text-decoration: none;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
       transition: opacity 0.2s;
     }
-    a.btn:hover { opacity: 0.92; }
+    a.btn:hover, button.btn:hover:not(:disabled) { opacity: 0.92; }
     .btn-primary { background: #d4af37; color: #111; }
     .btn-secondary {
       border: 1px solid #333;
       background: #14141a;
       color: #fff;
     }
-    .back { margin-top: 28px; font-size: 0.9rem; }
-    .back a { color: #d4af37; }
+    .back {
+      margin-top: 24px;
+      font-size: 0.95rem;
+    }
+    .back a { color: #d4af37; text-decoration: none; font-weight: 600; }
+    .back a:hover { text-decoration: underline; }
+    #signup-form {
+      margin-top: 36px;
+      padding-top: 28px;
+      border-top: 1px solid #2a2a32;
+      text-align: left;
+    }
+    #signup-form h2 {
+      font-size: 1.05rem;
+      color: #d4af37;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 10px;
+      border: 1px solid #333;
+      background: #141418;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .field input:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+    .form-actions { margin-top: 18px; }
+    .msg { margin-top: 14px; font-size: 0.95rem; text-align: center; }
+    .msg.ok { color: #6bc969; }
+    .msg.err { color: #e57373; }
+    button.btn:disabled { opacity: 0.55; cursor: not-allowed; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">Clip<span>Flow</span></div>
     <h1>Get started</h1>
-    <p>
-      Booking and payments run in the ClipFlow mobile app. For questions or to request a time by email,
-      reach out — we’ll point you to the app or next steps.
+    <p class="lead">
+      Create your ClipFlow account to access bookings and payments.
     </p>
     <div class="actions">
-      <a class="btn btn-primary" href="mailto:llostp03@icloud.com?subject=ClipFlow%20signup">Email us</a>
-      <a class="btn btn-secondary" href="/">Back to home</a>
+      <a class="btn btn-primary" href="#signup-form">Create account</a>
+      <a class="btn btn-secondary" href="/barber-login">Sign in</a>
     </div>
-    <p class="back"><a href="/">← clipflow.com home</a></p>
+    <p class="back"><a href="/">← Back to home</a></p>
+
+    <div id="signup-form">
+      <h2>Create your account</h2>
+      <form id="accountForm">
+        <div class="field">
+          <label for="name">Name (optional)</label>
+          <input type="text" id="name" name="name" autocomplete="name" placeholder="Your name" />
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="submitBtn">Create account</button>
+        </div>
+        <p class="msg" id="formMsg" hidden></p>
+      </form>
+    </div>
   </div>
+
+  <script>
+    document.getElementById("accountForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const name = document.getElementById("name").value.trim();
+      const btn = document.getElementById("submitBtn");
+      const msg = document.getElementById("formMsg");
+
+      msg.hidden = true;
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msg.className = "msg err";
+        msg.textContent = "Enter a valid email.";
+        msg.hidden = false;
+        return;
+      }
+      if (password.length < 8) {
+        msg.className = "msg err";
+        msg.textContent = "Password must be at least 8 characters.";
+        msg.hidden = false;
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await fetch("/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ email, password, name }),
+        });
+        let data = {};
+        const text = await res.text();
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = { detail: text.slice(0, 200) };
+        }
+        if (res.ok) {
+          msg.className = "msg ok";
+          msg.textContent = "Account created. You can sign in below or open the ClipFlow app.";
+          msg.hidden = false;
+          document.getElementById("accountForm").reset();
+        } else {
+          msg.className = "msg err";
+          msg.textContent = typeof data.detail === "string" ? data.detail : "Could not create account.";
+          msg.hidden = false;
+        }
+      } catch (err) {
+        msg.className = "msg err";
+        msg.textContent = err && err.message ? err.message : "Network error.";
+        msg.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
