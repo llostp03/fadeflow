@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { fetchCurrentUser } from '../api/me';

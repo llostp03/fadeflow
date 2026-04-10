@@ -1,128 +1,148 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { login } from '../api/login';
-import { fetchCurrentUser } from '../api/me';
+import { View, Text, TextInput, Button, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { login as loginWithEmail } from '../api/login';
+import { fetchCurrentUser } from '../api/me';
 
-const EMAIL_LIKE = /\S+@\S+\.\S+/;
+const DEMO_EMAIL = 'admin';
+const DEMO_PASSWORD = 'fadeflow123';
 
-export default function LoginScreen({ navigation }) {
+function loginErrorMessage(err) {
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  return 'Could not sign in and load your barber account.';
+}
+
+export default function LoginScreen() {
+  const navigation = useNavigation();
   const { setUser } = useAuth();
-  const [username, setUsername] = useState('');
+
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    const cleanUsername = username.trim();
-    const cleanPassword = password.trim();
-
-    if (!cleanUsername || !cleanPassword) {
-      Alert.alert('Missing info', 'Enter email (or barber username) and password.');
+    if (loading) {
       return;
     }
 
-    if (EMAIL_LIKE.test(cleanUsername)) {
-      setLoading(true);
-      try {
-        const data = await login({ email: cleanUsername, password: cleanPassword });
-        let profile = data.user;
-        if (data.user && typeof data.user.id === 'number') {
-          try {
-            profile = await fetchCurrentUser(data.user.id);
-          } catch {
-            profile = data.user;
-          }
-          await setUser(profile);
-        }
-        const active = profile?.subscription_status === 'active';
-        Alert.alert('Success', 'Logged in successfully.', [
-          {
-            text: 'OK',
-            onPress: () => navigation.replace(active ? 'Home' : 'Paywall'),
-          },
-        ]);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Try again.';
-        Alert.alert('Login failed', msg);
-      } finally {
-        setLoading(false);
+    const trimmedEmail = (email || '').trim();
+    const trimmedPassword = (password || '').trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      Alert.alert('Missing credentials', 'Please enter both email and password.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await loginWithEmail({ email: trimmedEmail, password: trimmedPassword });
+      console.log('LOGIN OK', { data });
+
+      const id = data?.user?.id;
+      if (typeof id !== 'number' || id < 1) {
+        throw new Error('No user ID returned from login.');
       }
+      console.log('LOGIN USER ID', id);
+
+      const profile = await fetchCurrentUser(id);
+      console.log('PROFILE OK', profile);
+
+      if (!profile || typeof profile.id !== 'number') {
+        throw new Error('Could not load your account profile.');
+      }
+
+      await setUser(profile);
+
+      const sub = String(profile.subscription_status || '').trim().toLowerCase();
+      console.log('SUB STATUS', sub);
+
+      if (sub === 'active') {
+        navigation.replace('Home');
+      } else {
+        navigation.replace('Paywall');
+      }
+    } catch (err) {
+      console.error('LOGIN FLOW ERROR', err);
+      Alert.alert('Login failed', loginErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoAdmin = async () => {
+    if (loading) {
       return;
     }
 
-    if (cleanUsername === 'admin' && cleanPassword === 'fadeflow123') {
+    const trimmedEmail = (email || '').trim();
+    const trimmedPassword = (password || '').trim();
+
+    if (trimmedEmail !== DEMO_EMAIL || trimmedPassword !== DEMO_PASSWORD) {
+      Alert.alert(
+        'Demo credentials',
+        `Enter email "${DEMO_EMAIL}" and password "${DEMO_PASSWORD}" to use the demo.`,
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
       await setUser(null);
-      Alert.alert('Success', 'Logged in successfully.', [
-        { text: 'OK', onPress: () => navigation.replace('Home') },
-      ]);
-      return;
+      navigation.replace('Home');
+    } catch (err) {
+      console.error('LOGIN FLOW ERROR', err);
+      Alert.alert('Demo failed', loginErrorMessage(err));
+    } finally {
+      setLoading(false);
     }
-
-    Alert.alert('Login failed', 'Invalid username or password.');
   };
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
-      <Text style={{ fontSize: 28, fontWeight: 'bold', marginBottom: 20 }}>Barber Login</Text>
-      <Text style={{ color: '#666', marginBottom: 16, fontSize: 14 }}>
-        Use your email to sign in for ClipFlow Pro. Or use admin / fadeflow123 for barber demo.
-      </Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Sign in</Text>
+      <Text style={styles.hint}>Enter your barber account email and password</Text>
 
       <TextInput
-        placeholder="Email or admin"
-        value={username}
-        onChangeText={setUsername}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
+        style={styles.input}
         editable={!loading}
-        style={{
-          borderWidth: 1,
-          borderColor: '#ccc',
-          borderRadius: 8,
-          padding: 12,
-          marginBottom: 12,
-        }}
       />
-
       <TextInput
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+        style={styles.input}
         editable={!loading}
-        style={{
-          borderWidth: 1,
-          borderColor: '#ccc',
-          borderRadius: 8,
-          padding: 12,
-          marginBottom: 16,
-        }}
       />
 
-      <TouchableOpacity
-        onPress={handleLogin}
-        disabled={loading}
-        style={{
-          backgroundColor: '#111',
-          padding: 14,
-          borderRadius: 8,
-          alignItems: 'center',
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Log In</Text>
-        )}
-      </TouchableOpacity>
+      {loading ? (
+        <ActivityIndicator size="large" />
+      ) : (
+        <>
+          <Button title="Log in" onPress={handleLogin} />
+          <View style={styles.spacer} />
+          <Button title="Barber demo" onPress={handleDemoAdmin} />
+        </>
+      )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', padding: 16 },
+  title: { fontSize: 24, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  hint: { fontSize: 14, color: '#666', marginBottom: 16, textAlign: 'center' },
+  input: { height: 48, borderColor: '#ccc', borderWidth: 1, marginBottom: 12, paddingHorizontal: 8 },
+  spacer: { height: 12 },
+});

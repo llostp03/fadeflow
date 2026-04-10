@@ -1,0 +1,6 @@
+node_modules
+.web-build
+dist
+.build
+.vscode
+*.min.js
