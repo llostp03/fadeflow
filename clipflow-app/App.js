@@ -79,7 +79,7 @@ export default function App() {
       <NavigationContainer>
         <StatusBar style="light" />
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
-          <RootStack.Screen name="Main" component={MainTabs} />
+          <RootStack.Screen name="Home" component={MainTabs} />
           <RootStack.Screen
             name="PrivacyPolicy"
             component={PrivacyPolicyScreen}
