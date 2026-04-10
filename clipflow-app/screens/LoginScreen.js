@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, Button, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { login as loginWithEmail } from '../api/login';
+import { API_BASE } from '../config/appConstants';
 import { fetchCurrentUser } from '../api/me';
 
 const DEMO_EMAIL = 'admin';
@@ -26,7 +26,10 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    e?.preventDefault?.();
+    console.log('LOGIN CLICKED');
+
     if (loading) {
       return;
     }
@@ -41,7 +44,40 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const data = await loginWithEmail({ email: trimmedEmail, password: trimmedPassword });
+      console.log('about to start login request');
+      console.log('LOGIN URL:', `${API_BASE}/login`);
+
+      const res = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: trimmedPassword,
+        }),
+      });
+
+      console.log('response status:', res.status);
+
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { detail: text?.slice(0, 200) || `Request failed (${res.status})` };
+      }
+      console.log('response data:', data);
+
+      if (!res.ok) {
+        const msg =
+          (typeof data.detail === 'string' && data.detail) ||
+          (typeof data.error === 'string' && data.error) ||
+          `Login failed (${res.status})`;
+        throw new Error(msg);
+      }
+
       console.log('LOGIN OK', { data });
 
       const id = data?.user?.id;
@@ -68,6 +104,7 @@ export default function LoginScreen() {
         navigation.replace('Paywall');
       }
     } catch (err) {
+      console.log('LOGIN ERROR:', err);
       console.error('LOGIN FLOW ERROR', err);
       Alert.alert('Login failed', loginErrorMessage(err));
     } finally {
