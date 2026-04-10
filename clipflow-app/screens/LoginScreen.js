@@ -8,24 +8,45 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+import { login } from '../api/login';
 import { colors, radius } from '../theme';
 
-/**
- * Login UI — wire POST /login on the API when you add JWT/session support.
- */
+const EMAIL_REGEX = /\S+@\S+\.\S+/;
+
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleLogin = () => {
-    Alert.alert(
-      'Coming soon',
-      'Server login is not enabled yet. Use Sign up to create an account, or book from the Book tab.'
-    );
+  const handleLogin = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      Alert.alert('Required', 'Email and password are required.');
+      return;
+    }
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      Alert.alert('Email', 'Enter a valid email.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const data = await login({ email: cleanEmail, password });
+      console.log('LOGIN RESPONSE:', data);
+      Alert.alert('Welcome', `Signed in as ${data.user?.email ?? cleanEmail}.`, [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (error) {
+      console.error('LOGIN ERROR:', error);
+      Alert.alert('Login failed', error?.message || 'Could not sign in.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -54,6 +75,7 @@ export default function LoginScreen({ navigation }) {
             placeholderTextColor={colors.textMuted}
             value={email}
             onChangeText={setEmail}
+            editable={!submitting}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
@@ -67,19 +89,30 @@ export default function LoginScreen({ navigation }) {
             placeholderTextColor={colors.textMuted}
             value={password}
             onChangeText={setPassword}
+            editable={!submitting}
             secureTextEntry
             autoComplete="password"
           />
 
           <Pressable
             onPress={handleLogin}
-            style={({ pressed }) => [styles.submitBtn, pressed && styles.pressed]}
+            disabled={submitting}
+            style={({ pressed }) => [
+              styles.submitBtn,
+              submitting && styles.submitDisabled,
+              pressed && !submitting && styles.pressed,
+            ]}
           >
-            <Text style={styles.submitText}>Log in</Text>
+            {submitting ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.submitText}>Log in</Text>
+            )}
           </Pressable>
 
           <Pressable
             onPress={() => navigation.replace('SignUp')}
+            disabled={submitting}
             style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
           >
             <Text style={styles.linkText}>Create an account</Text>
@@ -134,6 +167,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     alignItems: 'center',
   },
+  submitDisabled: { opacity: 0.6 },
   submitText: { color: '#000', fontSize: 17, fontWeight: 'bold' },
   linkBtn: { marginTop: 20, alignItems: 'center', padding: 12 },
   linkText: { color: colors.gold, fontSize: 16, fontWeight: '600' },

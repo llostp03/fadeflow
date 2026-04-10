@@ -188,6 +188,60 @@ app.post("/signup", (req, res) => {
   }
 });
 
+/**
+ * POST /login
+ * Body: { email: string, password: string }
+ * Looks up `users` (SQLite) and verifies bcrypt hash. Returns a placeholder token (replace with JWT for production).
+ */
+app.post("/login", (req, res) => {
+  try {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const cleanEmail = String(body.email ?? "")
+      .trim()
+      .toLowerCase();
+    const cleanPassword = String(body.password ?? "");
+
+    if (!cleanEmail || !cleanPassword) {
+      return res.status(422).json({ detail: "Email and password are required." });
+    }
+
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(422).json({ detail: "Enter a valid email address." });
+    }
+
+    const user = db
+      .prepare(
+        `SELECT id, email, name, password_hash, created_at
+         FROM users WHERE email = ? LIMIT 1`
+      )
+      .get(cleanEmail);
+
+    if (!user) {
+      return res.status(401).json({ detail: "Invalid email or password." });
+    }
+
+    const passwordMatches = bcrypt.compareSync(cleanPassword, user.password_hash);
+
+    if (!passwordMatches) {
+      return res.status(401).json({ detail: "Invalid email or password." });
+    }
+
+    return res.status(200).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        created_at: user.created_at,
+      },
+      token: `demo-token-${user.id}`,
+    });
+  } catch (error) {
+    console.error("LOGIN ERROR:", error);
+    return res.status(500).json({ detail: "Unable to log in right now." });
+  }
+});
+
 const BOOK_PATHS = [
   "/book",
   "/book/",
