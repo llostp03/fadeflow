@@ -15,6 +15,7 @@ import ContactScreen from './screens/ContactScreen';
 import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import LoginScreen from './screens/LoginScreen';
+import AIBookingScreen from './screens/AIBookingScreen';
 import { colors } from './theme';
 
 const RootStack = createNativeStackNavigator();
@@ -99,6 +100,14 @@ export default function App() {
           <RootStack.Screen
             name="Login"
             component={LoginScreen}
+            options={{
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <RootStack.Screen
+            name="AIBooking"
+            component={AIBookingScreen}
             options={{
               presentation: 'modal',
               animation: 'slide_from_bottom',

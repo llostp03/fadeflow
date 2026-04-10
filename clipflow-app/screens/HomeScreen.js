@@ -1,16 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
 import ClipFlowHeader from '../components/ClipFlowHeader';
 import { PUBLIC_WEB_URL } from '../config/appConstants';
 import { colors } from '../theme';
 
+const AI_BOOKING_APP_URL = 'clipflow://aibooking';
+
+function navigateToAIBookingFromWebView(navigation) {
+  let nav = navigation;
+  while (nav.getParent?.()) {
+    nav = nav.getParent();
+  }
+  nav.navigate('AIBooking');
+}
+
 /**
  * Home tab: public website in a WebView with loading overlay (header stays visible).
+ * Marketing CTAs use clipflow://aibooking to open the in-app AI booking modal.
  */
 export default function HomeScreen() {
+  const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
+
+  const onShouldStartLoadWithRequest = useCallback(
+    (request) => {
+      const { url } = request;
+      if (url.startsWith(AI_BOOKING_APP_URL)) {
+        navigateToAIBookingFromWebView(navigation);
+        return false;
+      }
+      return true;
+    },
+    [navigation],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -20,6 +45,7 @@ export default function HomeScreen() {
         <WebView
           source={{ uri: PUBLIC_WEB_URL }}
           onLoadEnd={() => setLoading(false)}
+          onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
           style={styles.webView}
           startInLoadingState={true}
           javaScriptEnabled={true}

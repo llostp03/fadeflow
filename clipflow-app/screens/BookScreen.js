@@ -10,17 +10,23 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { useStripe, PaymentSheetError } from '@stripe/stripe-react-native';
 import ClipFlowHeader from '../components/ClipFlowHeader';
 import { colors, radius } from '../theme';
 import { STRIPE_PUBLISHABLE_KEY } from '../stripeConfig';
-import { API_BASE, CONTACT } from '../config/appConstants';
+import { API_BASE } from '../config/appConstants';
 
 const SERVICES = ['Cut & style', 'Fade & line-up', 'Beard trim', 'The works'];
+
+function navigateToAIBooking(navigation) {
+  let nav = navigation;
+  while (nav.getParent?.()) {
+    nav = nav.getParent();
+  }
+  nav.navigate('AIBooking');
+}
 
 function errorMessageFromBody(data, status) {
   if (data == null || typeof data !== 'object') {
@@ -50,8 +56,7 @@ function paymentIntentIdFromClientSecret(clientSecret) {
   return clientSecret.slice(0, i);
 }
 
-export default function BookScreen() {
-  const navigation = useNavigation();
+export default function BookScreen({ navigation }) {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [name, setName] = useState('');
@@ -68,21 +73,16 @@ export default function BookScreen() {
     }
 
     if (Platform.OS === 'web') {
-      const mail = `mailto:${encodeURIComponent(CONTACT.EMAIL)}?subject=${encodeURIComponent(
-        'ClipFlow appointment request'
-      )}&body=${encodeURIComponent(
-        `Name: ${name.trim()}\nService: ${service}\nPreferred date: ${date}\nPreferred time: ${time}\n`
-      )}`;
       Alert.alert(
-        'Book on the mobile app',
-        'Card payments and instant booking run in the ClipFlow app for iOS and Android (Stripe). On web you can email your request instead.',
+        'Use the mobile app for card checkout',
+        'Stripe Pay & book runs on the ClipFlow iOS and Android apps. You can still open AI booking to choose a service and time.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Email request',
-            onPress: () => Linking.openURL(mail),
+            text: 'Open AI booking',
+            onPress: () => navigateToAIBooking(navigation),
           },
-        ]
+        ],
       );
       return;
     }
@@ -215,6 +215,29 @@ export default function BookScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
+          <Text style={styles.lead}>
+            Book with the in-app assistant — pick service, barber, and time without email.
+          </Text>
+
+          <Pressable
+            disabled={submitting}
+            onPress={() => navigateToAIBooking(navigation)}
+            style={({ pressed }) => [
+              styles.bookNowBtn,
+              submitting && styles.bookNowBtnDisabled,
+              pressed && !submitting && styles.pressed,
+            ]}
+          >
+            <Text style={styles.bookNowBtnText}>Book Now</Text>
+            <Text style={styles.bookNowSub}>Open full AI booking</Text>
+          </Pressable>
+
+          <View style={styles.dividerWrap}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>Or pay with card (classic)</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
           <Text style={styles.label}>Your name</Text>
           <TextInput
             style={styles.input}
@@ -307,6 +330,53 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 32,
   },
+  lead: {
+    color: colors.textMuted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  bookNowBtn: {
+    backgroundColor: colors.gold,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  bookNowBtnDisabled: {
+    opacity: 0.55,
+  },
+  bookNowBtnText: {
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  bookNowSub: {
+    color: 'rgba(0,0,0,0.65)',
+    fontSize: 13,
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  dividerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   label: {
     color: colors.textMuted,
     fontSize: 13,
@@ -355,7 +425,9 @@ const styles = StyleSheet.create({
   },
   bookBtn: {
     marginTop: 12,
-    backgroundColor: colors.gold,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingVertical: 16,
     borderRadius: radius.lg,
     alignItems: 'center',
@@ -364,7 +436,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   bookBtnText: {
-    color: '#000',
+    color: colors.text,
     fontSize: 17,
     fontWeight: 'bold',
     letterSpacing: 0.5,
