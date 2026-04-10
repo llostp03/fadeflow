@@ -475,6 +475,12 @@ app.post("/signup", (req, res) => {
 app.post("/login", (req, res) => {
   try {
     const body = req.body && typeof req.body === "object" ? req.body : {};
+    console.log("[POST /login] hit", {
+      contentType: req.headers["content-type"],
+      hasEmail: typeof body.email === "string" && body.email.length > 0,
+      hasPassword: typeof body.password === "string" && body.password.length > 0,
+    });
+
     const cleanEmail = String(body.email ?? "")
       .trim()
       .toLowerCase();
