@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe, PaymentSheetError } from '@stripe/stripe-react-native';
 import ClipFlowHeader from '../components/ClipFlowHeader';
 import { colors, radius } from '../theme';
-import { STRIPE_PUBLISHABLE_KEY } from '../stripeConfig';
 import { API_BASE } from '../config/appConstants';
 
 const SERVICES = ['Cut & style', 'Fade & line-up', 'Beard trim', 'The works'];

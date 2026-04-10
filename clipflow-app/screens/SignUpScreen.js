@@ -160,6 +160,14 @@ export default function SignUpScreen({ navigation }) {
               <Text style={styles.submitText}>Sign up</Text>
             )}
           </Pressable>
+
+          <Pressable
+            onPress={() => navigation.replace('Login')}
+            disabled={submitting}
+            style={({ pressed }) => [styles.switchLink, pressed && styles.pressed]}
+          >
+            <Text style={styles.switchLinkText}>Already have an account? Sign in</Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -212,5 +220,7 @@ const styles = StyleSheet.create({
   },
   submitDisabled: { opacity: 0.6 },
   submitText: { color: '#000', fontSize: 17, fontWeight: 'bold' },
+  switchLink: { marginTop: 20, alignItems: 'center', paddingVertical: 8 },
+  switchLinkText: { color: colors.gold, fontSize: 15, fontWeight: '600' },
   pressed: { opacity: 0.88 },
 });

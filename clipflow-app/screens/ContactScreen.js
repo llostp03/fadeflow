@@ -17,6 +17,7 @@ import { CONTACT } from '../config/appConstants';
 import { colors, radius } from '../theme';
 import { createSubscriptionCheckoutSession } from '../api/createCheckoutSession';
 import { useAuth } from '../context/AuthContext';
+import { navigateFromRoot } from '../utils/rootNavigation';
 
 async function openLink(url, label) {
   const supported = await Linking.canOpenURL(url);
@@ -43,11 +44,7 @@ export default function ContactScreen() {
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Log in',
-              onPress: () => {
-                const root = navigation.getParent()?.getParent();
-                if (root) root.navigate('Login');
-                else navigation.navigate('Login');
-              },
+              onPress: () => navigateFromRoot(navigation, 'Login'),
             },
           ],
         );
@@ -106,14 +103,21 @@ export default function ContactScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
-          onPress={() => {
-            const root = navigation.getParent()?.getParent();
-            if (root) {
-              root.navigate('SignUp');
-            } else {
-              navigation.navigate('SignUp');
-            }
-          }}
+          onPress={() => navigateFromRoot(navigation, 'Login')}
+        >
+          <View style={styles.iconCircle}>
+            <Ionicons name="log-in-outline" size={22} color={colors.gold} />
+          </View>
+          <View style={styles.btnTextWrap}>
+            <Text style={styles.btnTitle}>Barber sign in</Text>
+            <Text style={styles.btnHint}>Log in to unlock ClipFlow Pro</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
+          onPress={() => navigateFromRoot(navigation, 'SignUp')}
         >
           <View style={styles.iconCircle}>
             <Ionicons name="person-add-outline" size={22} color={colors.gold} />

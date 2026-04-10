@@ -6,15 +6,35 @@ import { WebView } from 'react-native-webview';
 import ClipFlowHeader from '../components/ClipFlowHeader';
 import { PUBLIC_WEB_URL } from '../config/appConstants';
 import { colors } from '../theme';
+import { navigateFromRoot } from '../utils/rootNavigation';
 
 const AI_BOOKING_APP_URL = 'clipflow://aibooking';
 
 function navigateToAIBookingFromWebView(navigation) {
-  let nav = navigation;
-  while (nav.getParent?.()) {
-    nav = nav.getParent();
+  navigateFromRoot(navigation, 'AIBooking');
+}
+
+/**
+ * Marketing links (e.g. /barber-login) should open the in-app barber sign-in, not another WebView page.
+ */
+function isBarberLoginNavigationUrl(url) {
+  if (
+    url.startsWith('clipflow://login') ||
+    url.startsWith('clipflow://barber-login')
+  ) {
+    return true;
   }
-  nav.navigate('AIBooking');
+  try {
+    const base = new URL(PUBLIC_WEB_URL);
+    const u = new URL(url);
+    if (u.origin !== base.origin) {
+      return false;
+    }
+    const path = (u.pathname || '/').replace(/\/+$/, '') || '/';
+    return path === '/login' || path === '/barber-login';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -30,6 +50,10 @@ export default function HomeScreen() {
       const { url } = request;
       if (url.startsWith(AI_BOOKING_APP_URL)) {
         navigateToAIBookingFromWebView(navigation);
+        return false;
+      }
+      if (isBarberLoginNavigationUrl(url)) {
+        navigateFromRoot(navigation, 'Login');
         return false;
       }
       return true;

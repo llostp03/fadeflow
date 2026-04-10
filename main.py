@@ -113,6 +113,8 @@ async def home_head():
 @app.get("/booking")
 @app.get("/bookappointment")
 @app.get("/login")
+@app.get("/barber-login")
+@app.get("/barber-login/")
 async def marketing_aliases():
     """
     These paths are linked from the landing page or shared URLs. Without explicit routes,

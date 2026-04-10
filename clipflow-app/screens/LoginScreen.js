@@ -1,9 +1,19 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  Alert,
+  ActivityIndicator,
+  StyleSheet,
+  Pressable,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../config/appConstants';
 import { fetchCurrentUser } from '../api/me';
+import { colors } from '../theme';
 
 const DEMO_EMAIL = 'admin';
 const DEMO_PASSWORD = 'fadeflow123';
@@ -28,7 +38,6 @@ export default function LoginScreen() {
 
   const handleLogin = async (e) => {
     e?.preventDefault?.();
-    console.log('LOGIN CLICKED');
 
     if (loading) {
       return;
@@ -44,9 +53,6 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      console.log('about to start login request');
-      console.log('LOGIN URL:', `${API_BASE}/login`);
-
       const res = await fetch(`${API_BASE}/login`, {
         method: 'POST',
         headers: {
@@ -59,8 +65,6 @@ export default function LoginScreen() {
         }),
       });
 
-      console.log('response status:', res.status);
-
       const text = await res.text();
       let data = {};
       try {
@@ -68,8 +72,6 @@ export default function LoginScreen() {
       } catch {
         data = { detail: text?.slice(0, 200) || `Request failed (${res.status})` };
       }
-      console.log('response data:', data);
-
       if (!res.ok) {
         const msg =
           (typeof data.detail === 'string' && data.detail) ||
@@ -78,16 +80,11 @@ export default function LoginScreen() {
         throw new Error(msg);
       }
 
-      console.log('LOGIN OK', { data });
-
       const id = data?.user?.id;
       if (typeof id !== 'number' || id < 1) {
         throw new Error('No user ID returned from login.');
       }
-      console.log('LOGIN USER ID', id);
-
       const profile = await fetchCurrentUser(id);
-      console.log('PROFILE OK', profile);
 
       if (!profile || typeof profile.id !== 'number') {
         throw new Error('Could not load your account profile.');
@@ -96,7 +93,6 @@ export default function LoginScreen() {
       await setUser(profile);
 
       const sub = String(profile.subscription_status || '').trim().toLowerCase();
-      console.log('SUB STATUS', sub);
 
       if (sub === 'active') {
         navigation.replace('Home');
@@ -104,8 +100,9 @@ export default function LoginScreen() {
         navigation.replace('Paywall');
       }
     } catch (err) {
-      console.log('LOGIN ERROR:', err);
-      console.error('LOGIN FLOW ERROR', err);
+      if (__DEV__) {
+        console.warn('Login failed', err);
+      }
       Alert.alert('Login failed', loginErrorMessage(err));
     } finally {
       setLoading(false);
@@ -133,7 +130,9 @@ export default function LoginScreen() {
       await setUser(null);
       navigation.replace('Home');
     } catch (err) {
-      console.error('LOGIN FLOW ERROR', err);
+      if (__DEV__) {
+        console.warn('Demo barber failed', err);
+      }
       Alert.alert('Demo failed', loginErrorMessage(err));
     } finally {
       setLoading(false);
@@ -170,6 +169,12 @@ export default function LoginScreen() {
           <Button title="Log in" onPress={handleLogin} />
           <View style={styles.spacer} />
           <Button title="Barber demo" onPress={handleDemoAdmin} />
+          <Pressable
+            onPress={() => navigation.navigate('SignUp')}
+            style={({ pressed }) => [styles.signUpLink, pressed && { opacity: 0.75 }]}
+          >
+            <Text style={styles.signUpLinkText}>New barber? Create an account</Text>
+          </Pressable>
         </>
       )}
     </View>
@@ -182,4 +187,6 @@ const styles = StyleSheet.create({
   hint: { fontSize: 14, color: '#666', marginBottom: 16, textAlign: 'center' },
   input: { height: 48, borderColor: '#ccc', borderWidth: 1, marginBottom: 12, paddingHorizontal: 8 },
   spacer: { height: 12 },
+  signUpLink: { marginTop: 24, alignItems: 'center', paddingVertical: 8 },
+  signUpLinkText: { color: colors.gold, fontSize: 15, fontWeight: '600' },
 });

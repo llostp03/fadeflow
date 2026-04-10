@@ -119,7 +119,7 @@ function loadIndexTemplate() {
 
 /**
  * Serve the marketing page (Jinja placeholders replaced). Optionally scroll to #book
- * (used when the user opens /book, /login, etc.).
+ * (used when the user opens /book, /login, /barber-login, etc.).
  */
 function sendMarketingPage(res, { scrollToBook = false } = {}) {
   let html = loadIndexTemplate().replace(/\{\{\s*title\s*\}\}/g, "ClipFlow");
@@ -591,6 +591,8 @@ const BOOK_PATHS = [
   "/bookappointment/",
   "/login",
   "/login/",
+  "/barber-login",
+  "/barber-login/",
 ];
 
 app.get(BOOK_PATHS, (_req, res) => {
