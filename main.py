@@ -9,12 +9,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from starlette.responses import Response
+from starlette.responses import FileResponse, RedirectResponse, Response
 
 
 APP_TITLE = "ClipFlow"
 
 DB_PATH = Path(__file__).resolve().parent / "bookings.db"
+SIGNUP_HTML_PATH = Path(__file__).resolve().parent / "stripe-backend" / "public" / "index.html"
 
 
 def init_db() -> None:
@@ -106,6 +107,28 @@ async def home(request: Request):
 async def home_head():
     """HEAD for probes (e.g. Render); avoid api_route(GET+HEAD) — can trigger routing bugs on some stacks."""
     return Response(status_code=200)
+
+
+@app.get("/book")
+@app.get("/booking")
+@app.get("/bookappointment")
+@app.get("/login")
+async def marketing_aliases():
+    """
+    These paths are linked from the landing page or shared URLs. Without explicit routes,
+    FastAPI returns 404 JSON — which looks broken in the browser. Send users to the
+    in-page booking section on the home page.
+    """
+    return RedirectResponse(url="/#book", status_code=302)
+
+
+@app.get("/signup")
+@app.get("/signup/")
+async def signup_page():
+    """Same static page as Node: stripe-backend/public/index.html."""
+    if SIGNUP_HTML_PATH.is_file():
+        return FileResponse(SIGNUP_HTML_PATH)
+    return RedirectResponse(url="/#book", status_code=302)
 
 
 @app.post("/create-payment-intent")

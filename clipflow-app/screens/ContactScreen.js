@@ -56,6 +56,27 @@ export default function ContactScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
+          onPress={() => {
+            const root = navigation.getParent()?.getParent();
+            if (root) {
+              root.navigate('SignUp');
+            } else {
+              navigation.navigate('SignUp');
+            }
+          }}
+        >
+          <View style={styles.iconCircle}>
+            <Ionicons name="person-add-outline" size={22} color={colors.gold} />
+          </View>
+          <View style={styles.btnTextWrap}>
+            <Text style={styles.btnTitle}>Create account</Text>
+            <Text style={styles.btnHint}>Sign up with email</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
           onPress={() => openLink(CONTACT.INSTAGRAM_URL, 'Instagram')}
         >
           <View style={styles.iconCircle}>

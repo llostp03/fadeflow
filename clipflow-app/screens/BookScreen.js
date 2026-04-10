@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -17,7 +18,7 @@ import { useStripe, PaymentSheetError } from '@stripe/stripe-react-native';
 import ClipFlowHeader from '../components/ClipFlowHeader';
 import { colors, radius } from '../theme';
 import { STRIPE_PUBLISHABLE_KEY } from '../stripeConfig';
-import { API_BASE } from '../config/appConstants';
+import { API_BASE, CONTACT } from '../config/appConstants';
 
 const SERVICES = ['Cut & style', 'Fade & line-up', 'Beard trim', 'The works'];
 
@@ -25,17 +26,19 @@ function errorMessageFromBody(data, status) {
   if (data == null || typeof data !== 'object') {
     return `Something went wrong (${status}).`;
   }
-  const { detail } = data;
-  if (detail == null) {
-    return `Something went wrong (${status}).`;
+  if (typeof data.detail === 'string') {
+    return data.detail;
   }
-  if (typeof detail === 'string') {
-    return detail;
+  if (Array.isArray(data.detail)) {
+    return data.detail.map((item) => item.msg || JSON.stringify(item)).join('\n');
   }
-  if (Array.isArray(detail)) {
-    return detail.map((item) => item.msg || JSON.stringify(item)).join('\n');
+  if (typeof data.error === 'string') {
+    return data.error;
   }
-  return String(detail);
+  if (data.message != null) {
+    return String(data.message);
+  }
+  return `Something went wrong (${status}).`;
 }
 
 function paymentIntentIdFromClientSecret(clientSecret) {
@@ -65,17 +68,21 @@ export default function BookScreen() {
     }
 
     if (Platform.OS === 'web') {
+      const mail = `mailto:${encodeURIComponent(CONTACT.EMAIL)}?subject=${encodeURIComponent(
+        'ClipFlow appointment request'
+      )}&body=${encodeURIComponent(
+        `Name: ${name.trim()}\nService: ${service}\nPreferred date: ${date}\nPreferred time: ${time}\n`
+      )}`;
       Alert.alert(
-        'Mobile booking',
-        'Booking and secure checkout are available in the ClipFlow app for iOS and Android.',
-      );
-      return;
-    }
-
-    if (!STRIPE_PUBLISHABLE_KEY.trim()) {
-      Alert.alert(
-        'Checkout unavailable',
-        'Payments are temporarily unavailable. Please try again later.',
+        'Book on the mobile app',
+        'Card payments and instant booking run in the ClipFlow app for iOS and Android (Stripe). On web you can email your request instead.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Email request',
+            onPress: () => Linking.openURL(mail),
+          },
+        ]
       );
       return;
     }

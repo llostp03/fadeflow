@@ -1,6 +1,11 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+
+const bcrypt = require("bcryptjs");
 const cors = require("cors");
+const Database = require("better-sqlite3");
 const dotenv = require("dotenv");
 const express = require("express");
 const Stripe = require("stripe");
@@ -59,6 +64,57 @@ try {
   process.exit(1);
 }
 
+/** Monorepo root (fadeflow/) — same layout as Python `main.py` + `templates/`. */
+const REPO_ROOT = path.join(__dirname, "..", "..");
+const DB_PATH = path.join(REPO_ROOT, "bookings.db");
+const INDEX_HTML_PATH = path.join(REPO_ROOT, "templates", "index.html");
+/** Static signup page shipped with stripe-backend (see `public/index.html`). */
+const SIGNUP_HTML_PATH = path.join(__dirname, "..", "public", "index.html");
+
+const db = new Database(DB_PATH);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    service TEXT NOT NULL,
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    payment_status TEXT NOT NULL,
+    payment_intent_id TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+`);
+
+let cachedIndexHtml = null;
+function loadIndexTemplate() {
+  if (cachedIndexHtml === null) {
+    cachedIndexHtml = fs.readFileSync(INDEX_HTML_PATH, "utf8");
+  }
+  return cachedIndexHtml;
+}
+
+/**
+ * Serve the marketing page (Jinja placeholders replaced). Optionally scroll to #book
+ * (used when the user opens /book, /login, etc.).
+ */
+function sendMarketingPage(res, { scrollToBook = false } = {}) {
+  let html = loadIndexTemplate().replace(/\{\{\s*title\s*\}\}/g, "ClipFlow");
+  if (scrollToBook) {
+    html = html.replace(
+      "</body>",
+      '<script>document.addEventListener("DOMContentLoaded",function(){location.hash="book";});</script></body>'
+    );
+  }
+  res.type("html").send(html);
+}
+
 const app = express();
 
 // Mobile apps and web clients sending JSON
@@ -70,14 +126,119 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+// --- Marketing HTML (Render runs this Node app, not Python FastAPI) ---
+app.get("/", (_req, res) => {
+  sendMarketingPage(res, { scrollToBook: false });
+});
+
+app.get("/signup", (_req, res) => {
+  res.sendFile(SIGNUP_HTML_PATH);
+});
+
+app.get("/signup/", (_req, res) => {
+  res.sendFile(SIGNUP_HTML_PATH);
+});
+
+/**
+ * POST /signup
+ * Body: { email: string, password: string, name?: string }
+ * Creates a user with a bcrypt password hash (never store plain text).
+ */
+app.post("/signup", (req, res) => {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const emailRaw = typeof body.email === "string" ? body.email.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const displayName = typeof body.name === "string" ? body.name.trim() : "";
+
+  if (!emailRaw || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+    return res.status(422).json({ detail: "A valid email is required." });
+  }
+  if (password.length < 8) {
+    return res.status(422).json({ detail: "Password must be at least 8 characters." });
+  }
+
+  const email = emailRaw.toLowerCase();
+
+  try {
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const createdAt = new Date().toISOString();
+    const result = db
+      .prepare(
+        `INSERT INTO users (email, password_hash, name, created_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(email, passwordHash, displayName, createdAt);
+
+    const id = Number(result.lastInsertRowid);
+    return res.status(201).json({
+      user: {
+        id,
+        email,
+        name: displayName,
+        created_at: createdAt,
+      },
+    });
+  } catch (err) {
+    const code = err && typeof err === "object" ? err.code : undefined;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code === "SQLITE_CONSTRAINT_UNIQUE" || msg.includes("UNIQUE constraint failed")) {
+      return res.status(409).json({ detail: "An account with this email already exists." });
+    }
+    return res.status(500).json({ detail: msg || "Could not create account." });
+  }
+});
+
+const BOOK_PATHS = [
+  "/book",
+  "/book/",
+  "/booking",
+  "/booking/",
+  "/bookappointment",
+  "/bookappointment/",
+  "/login",
+  "/login/",
+];
+
+app.get(BOOK_PATHS, (_req, res) => {
+  sendMarketingPage(res, { scrollToBook: true });
+});
+
 /**
  * POST /create-payment-intent
- * Body: { amount: number (cents), currency: string, customerName: string, metadata?: object }
- * Response: { clientSecret: string }
+ *
+ * Flowfade (legacy): { amount, currency, customerName, metadata? }
+ * ClipFlow app (matches Python API): { name, service?, date?, time? } — fixed $25.00 USD
  */
 app.post("/create-payment-intent", async (req, res) => {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+
   try {
-    const { amount, currency, customerName, metadata } = req.body;
+    // ClipFlow mobile — same contract as fadeflow/main.py
+    if (
+      typeof body.name === "string" &&
+      body.name.trim().length > 0 &&
+      typeof body.amount !== "number"
+    ) {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: 2500,
+        currency: "usd",
+        payment_method_types: ["card"],
+        metadata: {
+          customer_name: body.name.trim(),
+          service: typeof body.service === "string" ? body.service : "",
+          date: typeof body.date === "string" ? body.date : "",
+          time: typeof body.time === "string" ? body.time : "",
+        },
+      });
+      const clientSecret = paymentIntent.client_secret;
+      if (!clientSecret) {
+        return res.status(500).json({ detail: "Stripe did not return a client secret." });
+      }
+      return res.json({ clientSecret });
+    }
+
+    // Flowfade legacy
+    const { amount, currency, customerName, metadata } = body;
     const currencyNorm =
       typeof currency === "string" ? currency.trim().toLowerCase() : "";
 
@@ -93,7 +254,6 @@ app.post("/create-payment-intent", async (req, res) => {
       });
     }
 
-    // Stripe minimum is typically US$0.50 for USD; keep a conservative floor
     if (amount < 50) {
       return res.status(400).json({
         error: "amount must be at least 50 (e.g. 50 cents for USD).",
@@ -130,17 +290,99 @@ app.post("/create-payment-intent", async (req, res) => {
     return res.json({ clientSecret });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    if (typeof body.name === "string" && body.name.trim() && typeof body.amount !== "number") {
+      return res.status(400).json({ detail: message });
+    }
     return res.status(500).json({ error: message });
   }
 });
 
+function confirmationPayload(bookingId, name, service, date, time, paymentStatus) {
+  return {
+    confirmation: {
+      booking_id: bookingId,
+      name,
+      service,
+      date,
+      time,
+      payment_status: paymentStatus,
+      message: "Your ClipFlow booking is confirmed. We'll see you soon.",
+    },
+  };
+}
+
+/**
+ * POST /bookings — ClipFlow app finalizes after PaymentSheet (matches Python API).
+ */
+app.post("/bookings", async (req, res) => {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const service = typeof body.service === "string" ? body.service : "";
+  const date = typeof body.date === "string" ? body.date : "";
+  const time = typeof body.time === "string" ? body.time : "";
+  const paymentIntentId =
+    typeof body.payment_intent_id === "string" ? body.payment_intent_id.trim() : "";
+
+  if (!name || !paymentIntentId) {
+    return res.status(422).json({ detail: "name and payment_intent_id are required." });
+  }
+
+  try {
+    const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (intent.status !== "succeeded") {
+      return res.status(400).json({
+        detail: `Payment is not complete (status: ${intent.status}).`,
+      });
+    }
+
+    const paymentStatus = intent.status;
+
+    const existing = db
+      .prepare(
+        `SELECT id, name, service, date, time, payment_status
+         FROM bookings WHERE payment_intent_id = ?`
+      )
+      .get(paymentIntentId);
+
+    if (existing) {
+      return res.json(
+        confirmationPayload(
+          existing.id,
+          existing.name,
+          existing.service,
+          existing.date,
+          existing.time,
+          existing.payment_status
+        )
+      );
+    }
+
+    const createdAt = new Date().toISOString();
+    const result = db
+      .prepare(
+        `INSERT INTO bookings
+          (name, service, date, time, payment_status, payment_intent_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(name, service, date, time, paymentStatus, paymentIntentId, createdAt);
+
+    const bookingId = Number(result.lastInsertRowid);
+    return res.json(confirmationPayload(bookingId, name, service, date, time, paymentStatus));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return res.status(400).json({ detail: message });
+  }
+});
+
 app.use((_req, res) => {
-  res.status(404).json({ error: "Not found" });
+  res.status(404).json({ detail: "Not found" });
 });
 
 // Render sets PORT (e.g. 10000). Must bind 0.0.0.0 or the port scan will time out.
 const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Stripe API listening on http://0.0.0.0:${PORT} (PORT from env: ${process.env.PORT ?? "unset, using 4242"})`);
+  console.log(
+    `ClipFlow / Stripe API listening on http://0.0.0.0:${PORT} (PORT from env: ${process.env.PORT ?? "unset, using 4242"})`
+  );
 });
 
 server.on("error", (err) => {

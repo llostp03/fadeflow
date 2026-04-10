@@ -13,6 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "scheme": "clipflow",
     "ios": {
       "supportsTablet": true
     },
@@ -21,17 +22,14 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.anonymous.clipflowapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "xxxx"
-      }
-    },
     "plugins": [
+      "expo-dev-client",
       [
         "@stripe/stripe-react-native",
         {
@@ -39,6 +37,12 @@
           "enableGooglePay": false
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "af2bdb68-a5a0-4c48-92a1-f91345d8aac1"
+      }
+    },
+    "owner": "llostp"
   }
 }
