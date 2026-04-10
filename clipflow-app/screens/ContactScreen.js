@@ -1,11 +1,22 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet, Linking, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  TouchableOpacity,
+  StyleSheet,
+  Linking,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import ClipFlowHeader from '../components/ClipFlowHeader';
 import { CONTACT } from '../config/appConstants';
 import { colors, radius } from '../theme';
+import { createSubscriptionCheckoutSession } from '../api/createCheckoutSession';
+import { useAuth } from '../context/AuthContext';
 
 async function openLink(url, label) {
   const supported = await Linking.canOpenURL(url);
@@ -18,6 +29,45 @@ async function openLink(url, label) {
 
 export default function ContactScreen() {
   const navigation = useNavigation();
+  const { user } = useAuth();
+  const [subscribeLoading, setSubscribeLoading] = useState(false);
+
+  const handleSubscribe = useCallback(async () => {
+    setSubscribeLoading(true);
+    try {
+      if (user?.id == null) {
+        Alert.alert(
+          'Sign in required',
+          'Log in with your email account so ClipFlow Pro can be linked to your profile.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Log in',
+              onPress: () => {
+                const root = navigation.getParent()?.getParent();
+                if (root) root.navigate('Login');
+                else navigation.navigate('Login');
+              },
+            },
+          ],
+        );
+        return;
+      }
+
+      const url = await createSubscriptionCheckoutSession(String(user.id));
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Unable to open', 'Checkout could not be opened on this device.');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong.';
+      Alert.alert('Subscription checkout', message);
+    } finally {
+      setSubscribeLoading(false);
+    }
+  }, [navigation, user]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -75,6 +125,26 @@ export default function ContactScreen() {
           <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </Pressable>
 
+        <TouchableOpacity
+          style={[styles.btn, subscribeLoading && styles.btnDisabled]}
+          disabled={subscribeLoading}
+          onPress={handleSubscribe}
+          activeOpacity={0.88}
+        >
+          <View style={styles.iconCircle}>
+            {subscribeLoading ? (
+              <ActivityIndicator size="small" color={colors.gold} />
+            ) : (
+              <Ionicons name="sparkles" size={22} color={colors.gold} />
+            )}
+          </View>
+          <View style={styles.btnTextWrap}>
+            <Text style={styles.btnTitle}>Upgrade to ClipFlow Pro</Text>
+            <Text style={styles.btnHint}>Opens Stripe Checkout in your browser</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+
         <Pressable
           style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
           onPress={() => openLink(CONTACT.INSTAGRAM_URL, 'Instagram')}
@@ -126,6 +196,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingVertical: 14,
     paddingHorizontal: 16,
+  },
+  btnDisabled: {
+    opacity: 0.65,
   },
   iconCircle: {
     width: 44,

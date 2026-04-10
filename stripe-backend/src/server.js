@@ -72,6 +72,21 @@ const INDEX_HTML_PATH = path.join(REPO_ROOT, "templates", "index.html");
 const SIGNUP_HTML_PATH = path.join(__dirname, "..", "public", "index.html");
 
 const db = new Database(DB_PATH);
+
+function ensureUserSubscriptionColumns() {
+  const cols = db.prepare("PRAGMA table_info(users)").all();
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("subscription_status")) {
+    db.exec("ALTER TABLE users ADD COLUMN subscription_status TEXT NOT NULL DEFAULT ''");
+  }
+  if (!names.has("stripe_customer_id")) {
+    db.exec("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT");
+  }
+  if (!names.has("stripe_subscription_id")) {
+    db.exec("ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT");
+  }
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,6 +106,8 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 `);
+
+ensureUserSubscriptionColumns();
 
 let cachedIndexHtml = null;
 function loadIndexTemplate() {
@@ -115,10 +132,272 @@ function sendMarketingPage(res, { scrollToBook = false } = {}) {
   res.type("html").send(html);
 }
 
+/**
+ * Resolves user id from `Authorization: Bearer demo-token-<id>` (same token shape as POST /login).
+ */
+function userIdFromDemoBearer(req) {
+  const raw = req.headers.authorization;
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const parts = raw.trim().split(/\s+/);
+  if (parts.length !== 2 || parts[0].toLowerCase() !== "bearer") {
+    return null;
+  }
+  const m = /^demo-token-(\d+)$/.exec(parts[1]);
+  if (!m) {
+    return null;
+  }
+  const id = Number.parseInt(m[1], 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function customerIdFromStripeObject(customerField) {
+  if (typeof customerField === "string") {
+    return customerField;
+  }
+  if (
+    customerField &&
+    typeof customerField === "object" &&
+    typeof customerField.id === "string"
+  ) {
+    return customerField.id;
+  }
+  return null;
+}
+
+/**
+ * Map Stripe Subscription.status to our users.subscription_status (paywall unlocks only on "active").
+ */
+function stripeSubscriptionStatusToAppStatus(stripeStatus) {
+  if (stripeStatus === "active" || stripeStatus === "trialing") {
+    return "active";
+  }
+  if (stripeStatus === "past_due" || stripeStatus === "unpaid") {
+    return "past_due";
+  }
+  if (stripeStatus === "canceled" || stripeStatus === "incomplete_expired") {
+    return "canceled";
+  }
+  if (stripeStatus === "incomplete") {
+    return "incomplete";
+  }
+  if (stripeStatus === "paused") {
+    return "paused";
+  }
+  return "canceled";
+}
+
+/**
+ * @returns {number} rows updated
+ */
+function updateUsersSubscriptionByStripeCustomerId(customerId, status) {
+  if (!customerId || typeof customerId !== "string") {
+    return 0;
+  }
+  try {
+    return db
+      .prepare(`UPDATE users SET subscription_status = ? WHERE stripe_customer_id = ?`)
+      .run(status, customerId).changes;
+  } catch (e) {
+    console.error("[stripe-webhook] update by customer:", e instanceof Error ? e.message : e);
+    return 0;
+  }
+}
+
+/**
+ * @returns {number} rows updated
+ */
+function updateUsersSubscriptionByStripeSubscriptionId(subscriptionId, status) {
+  if (!subscriptionId || typeof subscriptionId !== "string") {
+    return 0;
+  }
+  try {
+    return db
+      .prepare(`UPDATE users SET subscription_status = ? WHERE stripe_subscription_id = ?`)
+      .run(status, subscriptionId).changes;
+  } catch (e) {
+    console.error("[stripe-webhook] update by subscription:", e instanceof Error ? e.message : e);
+    return 0;
+  }
+}
+
+function handleCheckoutSessionCompleted(session) {
+  if (session.mode !== "subscription") {
+    return;
+  }
+  const meta = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
+  const userIdRaw = typeof meta.userId === "string" ? meta.userId.trim() : "";
+  const customerId = customerIdFromStripeObject(session.customer);
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription && typeof session.subscription === "object"
+        ? session.subscription.id
+        : null;
+
+  if (!userIdRaw) {
+    console.log(
+      "[stripe-webhook] checkout.session.completed (no userId metadata). customer:",
+      customerId,
+      "subscription:",
+      subscriptionId
+    );
+    return;
+  }
+  const userId = Number.parseInt(userIdRaw, 10);
+  if (!Number.isInteger(userId) || userId < 1) {
+    console.warn("[stripe-webhook] Invalid userId in metadata:", userIdRaw);
+    return;
+  }
+  try {
+    const result = db
+      .prepare(
+        `UPDATE users SET subscription_status = ?, stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?`
+      )
+      .run("active", customerId, subscriptionId, userId);
+    if (result.changes > 0) {
+      console.log("[stripe-webhook] checkout.session.completed → active user id", userId);
+    } else {
+      console.warn(
+        "[stripe-webhook] No user row for id",
+        userId,
+        "(metadata userId did not match users.id)"
+      );
+    }
+  } catch (e) {
+    console.error("[stripe-webhook] checkout DB update failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+function handleInvoicePaid(invoice) {
+  if (!invoice.subscription) {
+    return;
+  }
+  const customerId = customerIdFromStripeObject(invoice.customer);
+  const n = updateUsersSubscriptionByStripeCustomerId(customerId, "active");
+  if (n > 0) {
+    console.log("[stripe-webhook] invoice.paid → active customer", customerId);
+  }
+}
+
+function handleInvoicePaymentFailed(invoice) {
+  if (!invoice.subscription) {
+    return;
+  }
+  const customerId = customerIdFromStripeObject(invoice.customer);
+  const n = updateUsersSubscriptionByStripeCustomerId(customerId, "past_due");
+  if (n > 0) {
+    console.log("[stripe-webhook] invoice.payment_failed → past_due customer", customerId);
+  }
+}
+
+function handleSubscriptionUpdated(subscription) {
+  const customerId = customerIdFromStripeObject(subscription.customer);
+  const appStatus = stripeSubscriptionStatusToAppStatus(subscription.status);
+  const subscriptionId = typeof subscription.id === "string" ? subscription.id : null;
+
+  let changes = updateUsersSubscriptionByStripeCustomerId(customerId, appStatus);
+  if (changes === 0 && subscriptionId) {
+    changes = updateUsersSubscriptionByStripeSubscriptionId(subscriptionId, appStatus);
+  }
+  if (changes > 0) {
+    console.log(
+      "[stripe-webhook] customer.subscription.updated",
+      subscription.status,
+      "→",
+      appStatus,
+      "customer",
+      customerId || "(unknown)"
+    );
+  }
+}
+
+function handleSubscriptionDeleted(subscription) {
+  const customerId = customerIdFromStripeObject(subscription.customer);
+  const subscriptionId = typeof subscription.id === "string" ? subscription.id : null;
+
+  let changes = updateUsersSubscriptionByStripeCustomerId(customerId, "canceled");
+  if (changes === 0 && subscriptionId) {
+    changes = updateUsersSubscriptionByStripeSubscriptionId(subscriptionId, "canceled");
+  }
+  if (changes > 0) {
+    console.log("[stripe-webhook] customer.subscription.deleted → canceled", customerId || subscriptionId);
+  }
+}
+
 const app = express();
 
-// Mobile apps and web clients sending JSON
 app.use(cors());
+
+/**
+ * POST /stripe-webhook
+ * Subscription lifecycle only (`users.*` Stripe columns + subscription_status). Does not handle
+ * PaymentIntent success for one-time bookings — those are confirmed via `/bookings` + PI retrieve.
+ *
+ * Raw body + signature verification. Register these events in Stripe Dashboard:
+ *   checkout.session.completed     — first purchase; links user + customer + subscription ids
+ *   invoice.paid                   — renewals (and paid cycles) → active
+ *   invoice.payment_failed         — failed renewal → past_due (paywall)
+ *   customer.subscription.updated  — status changes (cancel at period end, past_due, etc.)
+ *   customer.subscription.deleted  — subscription removed → canceled
+ */
+app.post(
+  "/stripe-webhook",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
+    const webhookSecret =
+      typeof process.env.STRIPE_WEBHOOK_SECRET === "string"
+        ? process.env.STRIPE_WEBHOOK_SECRET.trim()
+        : "";
+    if (!webhookSecret) {
+      console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET is not set — refusing webhook");
+      return res.status(503).send("Webhook not configured");
+    }
+
+    const sig = req.headers["stripe-signature"];
+    if (typeof sig !== "string") {
+      return res.status(400).send("Missing stripe-signature header");
+    }
+
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[stripe-webhook] Signature verification failed:", msg);
+      return res.status(400).send(`Webhook Error: ${msg}`);
+    }
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed":
+          handleCheckoutSessionCompleted(event.data.object);
+          break;
+        case "invoice.paid":
+          handleInvoicePaid(event.data.object);
+          break;
+        case "invoice.payment_failed":
+          handleInvoicePaymentFailed(event.data.object);
+          break;
+        case "customer.subscription.updated":
+          handleSubscriptionUpdated(event.data.object);
+          break;
+        case "customer.subscription.deleted":
+          handleSubscriptionDeleted(event.data.object);
+          break;
+        default:
+          break;
+      }
+    } catch (e) {
+      console.error("[stripe-webhook] handler error:", e instanceof Error ? e.message : e);
+    }
+
+    return res.sendStatus(200);
+  }
+);
+
+// Mobile apps and web clients sending JSON (must be after webhook raw body route)
 app.use(express.json({ limit: "1mb" }));
 
 // Health check for deploy platforms
@@ -212,7 +491,8 @@ app.post("/login", (req, res) => {
 
     const user = db
       .prepare(
-        `SELECT id, email, name, password_hash, created_at
+        `SELECT id, email, name, password_hash, created_at,
+                COALESCE(subscription_status, '') AS subscription_status
          FROM users WHERE email = ? LIMIT 1`
       )
       .get(cleanEmail);
@@ -233,6 +513,7 @@ app.post("/login", (req, res) => {
         email: user.email,
         name: user.name,
         created_at: user.created_at,
+        subscription_status: user.subscription_status || "",
       },
       token: `demo-token-${user.id}`,
     });
@@ -240,6 +521,59 @@ app.post("/login", (req, res) => {
     console.error("LOGIN ERROR:", error);
     return res.status(500).json({ detail: "Unable to log in right now." });
   }
+});
+
+/**
+ * GET /me — full current user (refresh after Stripe Checkout / webhook).
+ * Authorization: Bearer demo-token-<userId> (token from POST /login).
+ */
+app.get("/me", (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({
+      detail:
+        "Missing or invalid Authorization. Send: Authorization: Bearer demo-token-<userId> (from POST /login).",
+    });
+  }
+  const row = db
+    .prepare(
+      `SELECT id, email, name, created_at,
+              COALESCE(subscription_status, '') AS subscription_status
+       FROM users WHERE id = ?`
+    )
+    .get(userId);
+  if (!row) {
+    return res.status(404).json({ detail: "User not found." });
+  }
+  return res.json({
+    user: {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      created_at: row.created_at,
+      subscription_status: row.subscription_status || "",
+    },
+  });
+});
+
+/**
+ * GET /subscription-status — subscription flag only (same Authorization as GET /me).
+ */
+app.get("/subscription-status", (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({
+      detail:
+        "Missing or invalid Authorization. Send: Authorization: Bearer demo-token-<userId> (from POST /login).",
+    });
+  }
+  const row = db
+    .prepare(`SELECT COALESCE(subscription_status, '') AS subscription_status FROM users WHERE id = ?`)
+    .get(userId);
+  if (!row) {
+    return res.status(404).json({ detail: "User not found." });
+  }
+  return res.json({ subscription_status: row.subscription_status || "" });
 });
 
 const BOOK_PATHS = [
@@ -259,6 +593,9 @@ app.get(BOOK_PATHS, (_req, res) => {
 
 /**
  * POST /create-payment-intent
+ *
+ * One-time client booking payments (mobile Payment Sheet). Separate product from subscription:
+ * do not mix this flow with ClipFlow Pro / Checkout / users.subscription_status.
  *
  * Flowfade (legacy): { amount, currency, customerName, metadata? }
  * ClipFlow app (matches Python API): { name, service?, date?, time? } — fixed $25.00 USD
@@ -367,6 +704,7 @@ function confirmationPayload(bookingId, name, service, date, time, paymentStatus
 
 /**
  * POST /bookings — ClipFlow app finalizes after PaymentSheet (matches Python API).
+ * Writes the `bookings` table only; unrelated to subscription billing or `users.subscription_status`.
  */
 app.post("/bookings", async (req, res) => {
   const body = req.body && typeof req.body === "object" ? req.body : {};
@@ -424,6 +762,67 @@ app.post("/bookings", async (req, res) => {
     return res.json(confirmationPayload(bookingId, name, service, date, time, paymentStatus));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    return res.status(400).json({ detail: message });
+  }
+});
+
+/**
+ * POST /create-checkout-session
+ *
+ * ClipFlow Pro (barber app access): Stripe Checkout subscription mode + `/stripe-webhook` updates
+ * `users.subscription_status`. Keep this separate from one-time booking PaymentIntents + `/bookings`.
+ *
+ * Stripe Checkout (hosted page), subscription mode — not the mobile Payment Sheet
+ * (`/create-payment-intent`). Use this for clients that redirect to Stripe Checkout.
+ *
+ * Body: { userId?: string } — stored on session metadata when present.
+ *
+ * Env:
+ *   STRIPE_SUBSCRIPTION_PRICE_ID — required (e.g. price_xxx from Stripe Dashboard → Product → Price)
+ *   CHECKOUT_SUCCESS_URL — default http://localhost:3000/success
+ *   CHECKOUT_CANCEL_URL  — default http://localhost:3000/cancel
+ *
+ * Optional: put `{CHECKOUT_SESSION_ID}` in CHECKOUT_SUCCESS_URL per Stripe docs.
+ */
+app.post("/create-checkout-session", async (req, res) => {
+  const priceId =
+    typeof process.env.STRIPE_SUBSCRIPTION_PRICE_ID === "string"
+      ? process.env.STRIPE_SUBSCRIPTION_PRICE_ID.trim()
+      : "";
+  if (!priceId.startsWith("price_")) {
+    return res.status(503).json({
+      detail:
+        "Set STRIPE_SUBSCRIPTION_PRICE_ID to your Stripe Price ID (starts with price_).",
+    });
+  }
+
+  const successUrl =
+    (typeof process.env.CHECKOUT_SUCCESS_URL === "string" && process.env.CHECKOUT_SUCCESS_URL.trim()) ||
+    "http://localhost:3000/success";
+  const cancelUrl =
+    (typeof process.env.CHECKOUT_CANCEL_URL === "string" && process.env.CHECKOUT_CANCEL_URL.trim()) ||
+    "http://localhost:3000/cancel";
+
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: userId ? { userId } : {},
+    });
+
+    if (!session.url) {
+      return res.status(500).json({ detail: "Stripe did not return a checkout URL." });
+    }
+    return res.json({ url: session.url });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[create-checkout-session]", err);
     return res.status(400).json({ detail: message });
   }
 });

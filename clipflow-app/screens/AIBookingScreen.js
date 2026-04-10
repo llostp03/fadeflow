@@ -113,7 +113,7 @@ export default function AIBookingScreen({ navigation }) {
     }
 
     Alert.alert(
-      'Almost there',
+      'Appointment request',
       result.error ||
         'We could not reach the server. Your details are prepared; connect the API when ready.',
       [{ text: 'OK' }],

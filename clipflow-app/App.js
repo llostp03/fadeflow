@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -16,6 +16,9 @@ import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import LoginScreen from './screens/LoginScreen';
 import AIBookingScreen from './screens/AIBookingScreen';
+import PaywallScreen from './screens/PaywallScreen';
+import SubscriptionSync from './components/SubscriptionSync';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { colors } from './theme';
 
 const RootStack = createNativeStackNavigator();
@@ -59,6 +62,68 @@ function MainTabs() {
   );
 }
 
+function AppNavigation() {
+  const { user, ready } = useAuth();
+
+  if (!ready) {
+    return (
+      <View style={[styles.missingKey, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.gold} />
+      </View>
+    );
+  }
+
+  // Barber / staff: email login → require ClipFlow Pro. Guests & barber demo (no user) keep full
+  // access to one-time client booking (Payment Sheet) without a subscription.
+  const needsPaywall = user != null && user.subscription_status !== 'active';
+
+  return (
+    <>
+      <StatusBar style="light" />
+      <RootStack.Navigator
+        key={needsPaywall ? 'sub-paywall' : 'sub-ok'}
+        initialRouteName={needsPaywall ? 'Paywall' : 'Home'}
+        screenOptions={{ headerShown: false }}
+      >
+        <RootStack.Screen name="Home" component={MainTabs} />
+        <RootStack.Screen name="Paywall" component={PaywallScreen} />
+        <RootStack.Screen
+          name="PrivacyPolicy"
+          component={PrivacyPolicyScreen}
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <RootStack.Screen
+          name="SignUp"
+          component={SignUpScreen}
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <RootStack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <RootStack.Screen
+          name="AIBooking"
+          component={AIBookingScreen}
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+      </RootStack.Navigator>
+    </>
+  );
+}
+
 export default function App() {
   const publishableKey = STRIPE_PUBLISHABLE_KEY.trim();
 
@@ -77,44 +142,12 @@ export default function App() {
 
   return (
     <StripeProvider publishableKey={publishableKey} urlScheme="clipflow">
-      <NavigationContainer>
-        <StatusBar style="light" />
-        <RootStack.Navigator screenOptions={{ headerShown: false }}>
-          <RootStack.Screen name="Home" component={MainTabs} />
-          <RootStack.Screen
-            name="PrivacyPolicy"
-            component={PrivacyPolicyScreen}
-            options={{
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <RootStack.Screen
-            name="SignUp"
-            component={SignUpScreen}
-            options={{
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <RootStack.Screen
-            name="Login"
-            component={LoginScreen}
-            options={{
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <RootStack.Screen
-            name="AIBooking"
-            component={AIBookingScreen}
-            options={{
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-        </RootStack.Navigator>
-      </NavigationContainer>
+      <AuthProvider>
+        <NavigationContainer>
+          <SubscriptionSync />
+          <AppNavigation />
+        </NavigationContainer>
+      </AuthProvider>
     </StripeProvider>
   );
 }
