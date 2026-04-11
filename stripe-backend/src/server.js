@@ -790,7 +790,8 @@ app.post("/bookings", async (req, res) => {
  * Stripe Checkout (hosted page), subscription mode — not the mobile Payment Sheet
  * (`/create-payment-intent`). Use this for clients that redirect to Stripe Checkout.
  *
- * Body: { userId?: string } — stored on session metadata when present.
+ * Body (optional): { userId?: string } — legacy mobile client. Prefer
+ * `Authorization: Bearer demo-token-<userId>` (same as GET /me); user id is stored on session metadata.
  *
  * Env:
  *   STRIPE_SUBSCRIPTION_PRICE_ID — required (e.g. price_xxx from Stripe Dashboard → Product → Price)
@@ -819,7 +820,11 @@ app.post("/create-checkout-session", async (req, res) => {
     "http://localhost:3000/cancel";
 
   const body = req.body && typeof req.body === "object" ? req.body : {};
-  const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  let userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  const uidFromAuth = userIdFromDemoBearer(req);
+  if (uidFromAuth != null) {
+    userId = String(uidFromAuth);
+  }
 
   try {
     const session = await stripe.checkout.sessions.create({
