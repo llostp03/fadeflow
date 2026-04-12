@@ -272,14 +272,14 @@ function applyCheckoutSessionUnlock(session) {
     return { ok: false, reason: "bad_metadata", userId, changes: 0 };
   }
 
-  let userLookup = null;
+  let user = null;
   try {
-    userLookup = db
+    user = db
       .prepare(
         `SELECT id, email, COALESCE(subscription_status, '') AS subscription_status FROM users WHERE id = ?`
       )
       .get(userId);
-    console.log("[checkout-unlock] USER LOOKUP RESULT:", userLookup ?? "(no row for this id — UPDATE will change 0 rows)");
+    console.log("USER LOOKUP RESULT:", user);
   } catch (e) {
     console.error("[checkout-unlock] user lookup error:", e instanceof Error ? e.message : e);
   }
