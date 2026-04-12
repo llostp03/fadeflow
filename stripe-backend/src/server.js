@@ -782,7 +782,7 @@ app.post("/create-checkout-session", async (req, res) => {
 
   if (!priceId || !priceId.startsWith("price_")) {
     return res.status(500).json({
-      detail: "Set STRIPE_PRICE_ID to your Stripe Price ID (starts with price_).",
+      detail: "CHECKOUT DEBUG: STRIPE_PRICE_ID missing on live backend",
     });
   }
 
