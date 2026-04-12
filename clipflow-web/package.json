@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:checkout-smoke": "node ../stripe-backend/scripts/e2e-api-smoke.mjs --no-wait",
+    "test:pro-ui": "node scripts/verify-pro-ui-guards.mjs",
+    "test:checkout": "npm run test:pro-ui && npm run test:checkout-smoke"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
