@@ -266,8 +266,27 @@ function applyCheckoutSessionUnlock(session) {
   }
 
   const userId = userIdFromCheckoutSession(session);
+  console.log("[checkout-unlock] STRIPE SESSION METADATA:", session.metadata);
+  console.log("[checkout-unlock] RESOLVED USER ID (numeric):", userId);
+  console.log(
+    "[checkout-unlock] RESOLVED USER ID (raw metadata.userId):",
+    session.metadata?.userId
+  );
+
   if (!Number.isInteger(userId) || userId < 1) {
     return { ok: false, reason: "bad_metadata", userId, changes: 0 };
+  }
+
+  let userLookup = null;
+  try {
+    userLookup = db
+      .prepare(
+        `SELECT id, email, COALESCE(subscription_status, '') AS subscription_status FROM users WHERE id = ?`
+      )
+      .get(userId);
+    console.log("[checkout-unlock] USER LOOKUP RESULT:", userLookup ?? "(no row for this id — UPDATE will change 0 rows)");
+  } catch (e) {
+    console.error("[checkout-unlock] user lookup error:", e instanceof Error ? e.message : e);
   }
 
   try {
@@ -879,6 +898,16 @@ app.post("/create-checkout-session", async (req, res) => {
     });
   }
 
+  // Same as `${CHECKOUT_SUCCESS_URL}?session_id={CHECKOUT_SESSION_ID}` when URL has no prior query string.
+  console.log(
+    "[create-checkout-session] user.id → metadata.userId:",
+    String(user.id),
+    "| success_url:",
+    successUrl,
+    "| cancel_url:",
+    cancelUrl
+  );
+
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -932,7 +961,12 @@ app.post("/confirm-paid-checkout", async (req, res) => {
   }
 
   try {
+    console.log("[confirm-paid-checkout] CONFIRM SESSION ID:", sessionId);
+
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    console.log("[confirm-paid-checkout] STRIPE SESSION METADATA:", session.metadata);
+    console.log("[confirm-paid-checkout] RESOLVED USER ID (raw):", session.metadata?.userId);
+
     const checkoutUserId = userIdFromCheckoutSession(session);
     if (!Number.isInteger(checkoutUserId) || checkoutUserId < 1) {
       return res.status(400).json({
