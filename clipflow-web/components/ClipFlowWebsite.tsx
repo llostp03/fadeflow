@@ -340,9 +340,8 @@ export default function ClipFlowWebsite() {
 
   const signedInUser = meUser ?? currentUser;
   const isLoggedIn = !!signedInUser;
-  const sub = String(signedInUser?.subscription_status ?? "").trim().toLowerCase();
+  const sub = String(meUser?.subscription_status ?? "").trim().toLowerCase();
   const subscriptionActive = sub === "active";
-  const showPaywall = !!(signedInUser && !subscriptionActive);
 
   const handleUpgrade = async () => {
     console.log("UPGRADE CLICKED", { hasToken: !!token, checkoutLoading });
@@ -382,9 +381,9 @@ export default function ClipFlowWebsite() {
   const status = useMemo(() => {
     if (meLoading) return "…";
     if (!signedInUser) return "locked";
-    if (showPaywall) return "paywall";
+    if (!subscriptionActive) return "paywall";
     return "active";
-  }, [meLoading, signedInUser, showPaywall]);
+  }, [meLoading, signedInUser, subscriptionActive]);
 
   return (
     <div className="min-h-screen bg-[#05060b] text-white">
@@ -559,7 +558,7 @@ export default function ClipFlowWebsite() {
                   <div
                     className={cn(
                       "space-y-4",
-                      (!isLoggedIn || showPaywall) && "opacity-45",
+                      !subscriptionActive && "opacity-45",
                     )}
                   >
                     <div className="grid grid-cols-3 gap-3">
@@ -614,7 +613,7 @@ export default function ClipFlowWebsite() {
                       </p>
                     </div>
                   )}
-                {isLoggedIn && showPaywall && (
+                {isLoggedIn && !subscriptionActive && (
                   <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 p-4 text-center">
                     <div className="flex max-w-[280px] flex-col items-center gap-3 rounded-2xl border border-yellow-400/25 bg-[#0b0e15]/95 px-4 py-4 text-sm text-yellow-100">
                       <p>One-time access — unlock ClipFlow Pro to open this preview.</p>
@@ -1062,7 +1061,7 @@ export default function ClipFlowWebsite() {
                 <div
                   className={cn(
                     "space-y-6",
-                    (!isLoggedIn || showPaywall) && "pointer-events-none opacity-40",
+                    !subscriptionActive && "pointer-events-none opacity-40",
                   )}
                 >
                   <div className="grid gap-4 md:grid-cols-3">
@@ -1131,7 +1130,7 @@ export default function ClipFlowWebsite() {
                     </Link>
                   </div>
                 )}
-                {isLoggedIn && showPaywall && (
+                {isLoggedIn && !subscriptionActive && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-[32px] bg-[#05060b]/88 p-6 text-center">
                     <Crown className="h-10 w-10 text-yellow-400" />
                     <p className="text-lg font-semibold text-white">ClipFlow Pro required</p>
@@ -1161,7 +1160,7 @@ export default function ClipFlowWebsite() {
               <Card
                 className={cn(
                   "rounded-[32px] border-white/10 bg-white/5",
-                  (!isLoggedIn || showPaywall) && "opacity-45",
+                  !subscriptionActive && "opacity-45",
                 )}
               >
                 <CardContent className="space-y-4 p-6">
