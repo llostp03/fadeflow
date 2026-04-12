@@ -238,6 +238,21 @@ function updateUsersSubscriptionByStripeSubscriptionId(subscriptionId, status) {
   }
 }
 
+/**
+ * Stripe sends metadata values as strings; test fixtures (e.g. `stripe trigger`) often omit metadata.
+ * We also set client_reference_id on session create so the id is still on the session object.
+ */
+function userIdFromCheckoutSession(session) {
+  const meta =
+    session.metadata && typeof session.metadata.userId === "string"
+      ? session.metadata.userId.trim()
+      : "";
+  const ref =
+    typeof session.client_reference_id === "string" ? session.client_reference_id.trim() : "";
+  const raw = meta || ref;
+  return raw === "" ? Number.NaN : Number(raw);
+}
+
 function handleCheckoutSessionCompleted(session) {
   if (session.mode === "payment") {
     const ps = session.payment_status;
@@ -246,8 +261,17 @@ function handleCheckoutSessionCompleted(session) {
     }
   }
 
-  const userId = Number(session.metadata?.userId);
+  const userId = userIdFromCheckoutSession(session);
   if (!Number.isInteger(userId) || userId < 1) {
+    console.warn(
+      "[stripe-webhook] checkout.session.completed: skip — need metadata.userId or client_reference_id (session id:",
+      session.id,
+      "metadata:",
+      session.metadata,
+      "client_reference_id:",
+      session.client_reference_id,
+      ")"
+    );
     return;
   }
 
@@ -257,6 +281,12 @@ function handleCheckoutSessionCompleted(session) {
       .run(userId);
     if (result.changes > 0) {
       console.log("[stripe-webhook] checkout.session.completed → active user id", userId);
+    } else {
+      console.warn(
+        "[stripe-webhook] checkout.session.completed: no users row updated for id",
+        userId,
+        "(wrong id or different DB than login)"
+      );
     }
   } catch (e) {
     console.error("[stripe-webhook] checkout DB update failed:", e instanceof Error ? e.message : e);
@@ -817,9 +847,17 @@ app.post("/create-checkout-session", async (req, res) => {
   }
   const user = { id: userId };
 
+  if (!userId || String(userId).trim() === "") {
+    return res.status(400).json({
+      detail:
+        "Missing user id for checkout. Send Authorization: Bearer demo-token-<yourUserId> (same as after login) or JSON body { userId: \"<id>\" }.",
+    });
+  }
+
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      payment_method_types: ["card"],
       line_items: [
         {
           price: priceId,
@@ -828,7 +866,9 @@ app.post("/create-checkout-session", async (req, res) => {
       ],
       success_url: successUrl,
       cancel_url: cancelUrl,
+      client_reference_id: String(user.id),
       metadata: {
+        // Webhook reads this to set users.subscription_status (must match logged-in user).
         userId: String(user.id),
       },
     });
