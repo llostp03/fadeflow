@@ -315,19 +315,6 @@ function handleCheckoutSessionCompleted(session) {
   }
 }
 
-/** Stripe replaces {CHECKOUT_SESSION_ID} so the browser can call /confirm-paid-checkout. */
-function checkoutSuccessUrlWithSessionId(baseUrl) {
-  const trimmed = typeof baseUrl === "string" ? baseUrl.trim() : "";
-  if (!trimmed) {
-    return "http://localhost:3000/success?session_id={CHECKOUT_SESSION_ID}";
-  }
-  if (trimmed.includes("{CHECKOUT_SESSION_ID}")) {
-    return trimmed;
-  }
-  const sep = trimmed.includes("?") ? "&" : "?";
-  return `${trimmed}${sep}session_id={CHECKOUT_SESSION_ID}`;
-}
-
 function handleInvoicePaid(invoice) {
   if (!invoice.subscription) {
     return;
@@ -852,10 +839,10 @@ app.post("/bookings", async (req, res) => {
  *
  * Env:
  *   STRIPE_PRICE_ID — required: a **one-time** Price ID (price_xxx)
- *   CHECKOUT_SUCCESS_URL — default http://localhost:3000/success if unset
+ *   CHECKOUT_SUCCESS_URL — base URL (no trailing slash); we append `?session_id={CHECKOUT_SESSION_ID}` (or `&` if it already has `?`)
  *   CHECKOUT_CANCEL_URL — default http://localhost:3000/cancel if unset
  *
- * Optional: put `{CHECKOUT_SESSION_ID}` in CHECKOUT_SUCCESS_URL per Stripe docs.
+ * If CHECKOUT_SUCCESS_URL already contains `{CHECKOUT_SESSION_ID}`, it is used as-is.
  */
 app.post("/create-checkout-session", async (req, res) => {
   const priceId = normalizeStripePriceId(process.env.STRIPE_PRICE_ID);
@@ -867,10 +854,12 @@ app.post("/create-checkout-session", async (req, res) => {
     });
   }
 
-  const successUrl = checkoutSuccessUrlWithSessionId(
+  const baseSuccess =
     (typeof process.env.CHECKOUT_SUCCESS_URL === "string" && process.env.CHECKOUT_SUCCESS_URL.trim()) ||
-      "http://localhost:3000/success"
-  );
+    "http://localhost:3000/success";
+  const successUrl = baseSuccess.includes("{CHECKOUT_SESSION_ID}")
+    ? baseSuccess
+    : `${baseSuccess}${baseSuccess.includes("?") ? "&" : "?"}session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl =
     (typeof process.env.CHECKOUT_CANCEL_URL === "string" && process.env.CHECKOUT_CANCEL_URL.trim()) ||
     "http://localhost:3000/cancel";
@@ -924,7 +913,7 @@ app.post("/create-checkout-session", async (req, res) => {
  * POST /confirm-paid-checkout
  * Fallback when Stripe webhooks are missing or failing: retrieves the Checkout Session from Stripe,
  * verifies payment + metadata.userId matches the logged-in user, then runs the same DB unlock as the webhook.
- * Body: { sessionId: "cs_..." } — session_id from success URL (see checkoutSuccessUrlWithSessionId).
+ * Body: { sessionId: "cs_..." } — `session_id` query param from success redirect.
  */
 app.post("/confirm-paid-checkout", async (req, res) => {
   const uid = userIdFromDemoBearer(req);
