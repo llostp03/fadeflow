@@ -3,6 +3,9 @@ import { API_BASE } from "./config";
 /** Web + marketing site session key (see ClipFlowWebsite load on open). */
 export const AUTH_TOKEN_STORAGE_KEY = "clipflow_token";
 
+/** Last Stripe Checkout Session id (`cs_...`) — set from success URL for Refresh account / confirm-paid-checkout. */
+export const CHECKOUT_SESSION_STORAGE_KEY = "clipflow_checkout_session_id";
+
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
@@ -170,4 +173,28 @@ export async function createCheckoutSession(token: string) {
   }
 
   return data as { url?: string };
+}
+
+/**
+ * POST /confirm-paid-checkout — unlocks Pro using Stripe session id (fallback if webhooks did not run).
+ * Requires the same Bearer token as checkout; session metadata must match this user.
+ */
+export async function confirmPaidCheckout(token: string, sessionId: string) {
+  const res = await fetch(`${API_BASE}/confirm-paid-checkout`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ sessionId }),
+  });
+
+  const data = await parseJsonSafe(res);
+
+  if (!res.ok) {
+    throw new Error(detailFromApiResponse(data, res, "Unable to confirm payment."));
+  }
+
+  return data as { ok?: boolean; subscription_status?: string };
 }

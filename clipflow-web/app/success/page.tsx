@@ -2,13 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AUTH_TOKEN_STORAGE_KEY, getMe } from "@/lib/api";
+import {
+  AUTH_TOKEN_STORAGE_KEY,
+  CHECKOUT_SESSION_STORAGE_KEY,
+  confirmPaidCheckout,
+  getMe,
+} from "@/lib/api";
 import { isActiveSubscription } from "@/lib/subscription";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 30;
 
 type Phase = "checking" | "unlocked" | "pending" | "no_token";
+
+function readCheckoutSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("session_id") || sessionStorage.getItem(CHECKOUT_SESSION_STORAGE_KEY);
+}
 
 export default function SuccessPage() {
   const [phase, setPhase] = useState<Phase>("checking");
@@ -35,9 +46,23 @@ export default function SuccessPage() {
       return;
     }
 
-    let attempts = 0;
+    const sessionId = readCheckoutSessionId();
+    if (sessionId) {
+      sessionStorage.setItem(CHECKOUT_SESSION_STORAGE_KEY, sessionId);
+    }
 
     const poll = async () => {
+      if (sessionId) {
+        try {
+          await confirmPaidCheckout(token, sessionId);
+        } catch (e) {
+          if (!cancelled) {
+            setCheckError(e instanceof Error ? e.message : "Could not confirm payment with server.");
+          }
+        }
+      }
+
+      let attempts = 0;
       while (!cancelled && attempts < MAX_ATTEMPTS) {
         attempts += 1;
         try {
@@ -45,8 +70,9 @@ export default function SuccessPage() {
           if (cancelled) return;
           if (ok) return;
         } catch (e) {
-          if (cancelled) return;
-          setCheckError(e instanceof Error ? e.message : "Could not reach account service.");
+          if (!cancelled) {
+            setCheckError(e instanceof Error ? e.message : "Could not reach account service.");
+          }
         }
         await new Promise((r) => setTimeout(r, POLL_MS));
       }
@@ -67,6 +93,15 @@ export default function SuccessPage() {
       return;
     }
     setPhase("checking");
+    const sessionId = readCheckoutSessionId();
+    if (sessionId) {
+      sessionStorage.setItem(CHECKOUT_SESSION_STORAGE_KEY, sessionId);
+      try {
+        await confirmPaidCheckout(token, sessionId);
+      } catch (e) {
+        setCheckError(e instanceof Error ? e.message : "Confirm failed.");
+      }
+    }
     try {
       const ok = await runCheckOnce(token);
       if (!ok) setPhase("pending");
@@ -104,9 +139,9 @@ export default function SuccessPage() {
         {phase === "pending" && (
           <>
             <p className="text-zinc-300">
-              Payment is complete, but we could not confirm Pro access yet. The server may still be
-              processing your payment (webhook). Try again in a moment, or open the home page and use
-              &quot;Refresh account&quot; after signing in.
+              Payment is complete, but we could not confirm Pro access yet. If you just paid, open this page
+              from the email receipt link or try &quot;Check again&quot;. Also confirm your API has
+              STRIPE_WEBHOOK_SECRET set and the webhook URL registered in Stripe.
             </p>
             {checkError && (
               <p className="text-sm text-red-300" role="alert">

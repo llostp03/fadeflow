@@ -253,16 +253,46 @@ function userIdFromCheckoutSession(session) {
   return raw === "" ? Number.NaN : Number(raw);
 }
 
-function handleCheckoutSessionCompleted(session) {
+/**
+ * Shared by webhook and POST /confirm-paid-checkout. Idempotent: safe to call again.
+ * @returns {{ ok: boolean, reason: string, userId: number, changes: number }}
+ */
+function applyCheckoutSessionUnlock(session) {
   if (session.mode === "payment") {
     const ps = session.payment_status;
     if (ps !== "paid" && ps !== "no_payment_required") {
-      return;
+      return { ok: false, reason: "payment_not_complete", userId: Number.NaN, changes: 0 };
     }
   }
 
   const userId = userIdFromCheckoutSession(session);
   if (!Number.isInteger(userId) || userId < 1) {
+    return { ok: false, reason: "bad_metadata", userId, changes: 0 };
+  }
+
+  try {
+    const result = db
+      .prepare(`UPDATE users SET subscription_status = 'active' WHERE id = ?`)
+      .run(userId);
+    const changes = result.changes;
+    return {
+      ok: changes > 0,
+      reason: changes > 0 ? "ok" : "no_row",
+      userId,
+      changes,
+    };
+  } catch (e) {
+    console.error("[checkout-unlock] DB update failed:", e instanceof Error ? e.message : e);
+    return { ok: false, reason: "db_error", userId, changes: 0 };
+  }
+}
+
+function handleCheckoutSessionCompleted(session) {
+  const result = applyCheckoutSessionUnlock(session);
+  if (result.reason === "payment_not_complete") {
+    return;
+  }
+  if (result.reason === "bad_metadata" || !Number.isInteger(result.userId) || result.userId < 1) {
     console.warn(
       "[stripe-webhook] checkout.session.completed: skip — need metadata.userId or client_reference_id (session id:",
       session.id,
@@ -274,23 +304,28 @@ function handleCheckoutSessionCompleted(session) {
     );
     return;
   }
-
-  try {
-    const result = db
-      .prepare(`UPDATE users SET subscription_status = 'active' WHERE id = ?`)
-      .run(userId);
-    if (result.changes > 0) {
-      console.log("[stripe-webhook] checkout.session.completed → active user id", userId);
-    } else {
-      console.warn(
-        "[stripe-webhook] checkout.session.completed: no users row updated for id",
-        userId,
-        "(wrong id or different DB than login)"
-      );
-    }
-  } catch (e) {
-    console.error("[stripe-webhook] checkout DB update failed:", e instanceof Error ? e.message : e);
+  if (result.ok) {
+    console.log("[stripe-webhook] checkout.session.completed → active user id", result.userId);
+  } else if (result.reason === "no_row") {
+    console.warn(
+      "[stripe-webhook] checkout.session.completed: no users row updated for id",
+      result.userId,
+      "(wrong id or different DB than login)"
+    );
   }
+}
+
+/** Stripe replaces {CHECKOUT_SESSION_ID} so the browser can call /confirm-paid-checkout. */
+function checkoutSuccessUrlWithSessionId(baseUrl) {
+  const trimmed = typeof baseUrl === "string" ? baseUrl.trim() : "";
+  if (!trimmed) {
+    return "http://localhost:3000/success?session_id={CHECKOUT_SESSION_ID}";
+  }
+  if (trimmed.includes("{CHECKOUT_SESSION_ID}")) {
+    return trimmed;
+  }
+  const sep = trimmed.includes("?") ? "&" : "?";
+  return `${trimmed}${sep}session_id={CHECKOUT_SESSION_ID}`;
 }
 
 function handleInvoicePaid(invoice) {
@@ -832,9 +867,10 @@ app.post("/create-checkout-session", async (req, res) => {
     });
   }
 
-  const successUrl =
+  const successUrl = checkoutSuccessUrlWithSessionId(
     (typeof process.env.CHECKOUT_SUCCESS_URL === "string" && process.env.CHECKOUT_SUCCESS_URL.trim()) ||
-    "http://localhost:3000/success";
+      "http://localhost:3000/success"
+  );
   const cancelUrl =
     (typeof process.env.CHECKOUT_CANCEL_URL === "string" && process.env.CHECKOUT_CANCEL_URL.trim()) ||
     "http://localhost:3000/cancel";
@@ -880,6 +916,71 @@ app.post("/create-checkout-session", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[create-checkout-session]", err);
+    return res.status(400).json({ detail: message });
+  }
+});
+
+/**
+ * POST /confirm-paid-checkout
+ * Fallback when Stripe webhooks are missing or failing: retrieves the Checkout Session from Stripe,
+ * verifies payment + metadata.userId matches the logged-in user, then runs the same DB unlock as the webhook.
+ * Body: { sessionId: "cs_..." } — session_id from success URL (see checkoutSuccessUrlWithSessionId).
+ */
+app.post("/confirm-paid-checkout", async (req, res) => {
+  const uid = userIdFromDemoBearer(req);
+  if (uid == null) {
+    return res.status(401).json({
+      detail: "Missing or invalid Authorization. Send: Bearer demo-token-<userId> (from POST /login).",
+    });
+  }
+
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+  if (!sessionId.startsWith("cs_")) {
+    return res.status(400).json({
+      detail: "Invalid sessionId (expected Stripe Checkout Session id starting with cs_).",
+    });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const checkoutUserId = userIdFromCheckoutSession(session);
+    if (!Number.isInteger(checkoutUserId) || checkoutUserId < 1) {
+      return res.status(400).json({
+        detail: "Checkout session has no user id (metadata.userId / client_reference_id).",
+      });
+    }
+    if (checkoutUserId !== uid) {
+      return res.status(403).json({
+        detail:
+          "This payment is tied to a different account. Sign in as the same user who started checkout.",
+      });
+    }
+
+    const result = applyCheckoutSessionUnlock(session);
+    if (result.reason === "payment_not_complete") {
+      return res.status(400).json({
+        detail: "Payment is not complete yet.",
+        payment_status: session.payment_status,
+      });
+    }
+    if (result.reason === "bad_metadata") {
+      return res.status(400).json({ detail: "Checkout session is missing user metadata." });
+    }
+    if (result.reason === "no_row") {
+      return res.status(400).json({
+        detail: "No user row matches this account id. Your API database may differ from where you signed up.",
+      });
+    }
+    if (!result.ok && result.reason === "db_error") {
+      return res.status(500).json({ detail: "Database error while unlocking account." });
+    }
+
+    console.log("[confirm-paid-checkout] unlocked user id", uid, "session", sessionId);
+    return res.json({ ok: true, subscription_status: "active" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[confirm-paid-checkout]", err);
     return res.status(400).json({ detail: message });
   }
 });

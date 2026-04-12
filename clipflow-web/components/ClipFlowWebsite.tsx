@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils";
 import { createCheckoutSession } from "@/lib/api";
 import {
   AUTH_TOKEN_STORAGE_KEY,
+  CHECKOUT_SESSION_STORAGE_KEY,
   clearStoredToken,
+  confirmPaidCheckout,
   getMe,
   getStoredToken,
   login,
@@ -293,11 +295,29 @@ export default function ClipFlowWebsite() {
     setMessage("");
 
     try {
+      if (typeof window !== "undefined") {
+        const sessionId = window.sessionStorage.getItem(CHECKOUT_SESSION_STORAGE_KEY);
+        if (sessionId) {
+          try {
+            await confirmPaidCheckout(token, sessionId);
+          } catch {
+            // Webhook may still apply later; continue with GET /me
+          }
+        }
+      }
+
       const me = await getMe(token);
       setCurrentUser(me);
       setMeUser(me);
       setEmail(me.email);
       setName(me.name?.trim() || "ClipFlow Barber");
+      const active =
+        String(me.subscription_status ?? "")
+          .trim()
+          .toLowerCase() === "active";
+      if (active && typeof window !== "undefined") {
+        window.sessionStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
+      }
       setMessage("Account refreshed.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to refresh account.");
