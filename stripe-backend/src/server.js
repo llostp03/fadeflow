@@ -266,12 +266,7 @@ function applyCheckoutSessionUnlock(session) {
   }
 
   const userId = userIdFromCheckoutSession(session);
-  console.log("[checkout-unlock] STRIPE SESSION METADATA:", session.metadata);
-  console.log("[checkout-unlock] RESOLVED USER ID (numeric):", userId);
-  console.log(
-    "[checkout-unlock] RESOLVED USER ID (raw metadata.userId):",
-    session.metadata?.userId
-  );
+  console.log("RESOLVED USER ID (numeric from metadata/ref):", userId);
 
   if (!Number.isInteger(userId) || userId < 1) {
     return { ok: false, reason: "bad_metadata", userId, changes: 0 };
@@ -307,6 +302,10 @@ function applyCheckoutSessionUnlock(session) {
 }
 
 function handleCheckoutSessionCompleted(session) {
+  console.log("WEBHOOK CHECKOUT SESSION ID:", session.id);
+  console.log("STRIPE SESSION METADATA:", session.metadata);
+  console.log("RESOLVED USER ID:", session.metadata?.userId);
+
   const result = applyCheckoutSessionUnlock(session);
   if (result.reason === "payment_not_complete") {
     return;
@@ -961,11 +960,11 @@ app.post("/confirm-paid-checkout", async (req, res) => {
   }
 
   try {
-    console.log("[confirm-paid-checkout] CONFIRM SESSION ID:", sessionId);
+    console.log("CONFIRM SESSION ID:", sessionId);
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    console.log("[confirm-paid-checkout] STRIPE SESSION METADATA:", session.metadata);
-    console.log("[confirm-paid-checkout] RESOLVED USER ID (raw):", session.metadata?.userId);
+    console.log("STRIPE SESSION METADATA:", session.metadata);
+    console.log("RESOLVED USER ID:", session.metadata?.userId);
 
     const checkoutUserId = userIdFromCheckoutSession(session);
     if (!Number.isInteger(checkoutUserId) || checkoutUserId < 1) {
