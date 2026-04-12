@@ -1,10 +1,12 @@
-# Deploy from REPOSITORY ROOT (Root Directory in Render = empty).
-# build/start call the root package.json scripts, which cd into stripe-backend.
-# Set STRIPE_SECRET_KEY in Render Environment.
+# Backend Web Service: run from the stripe-backend folder (Node API).
+# In the Render Dashboard: Settings → Build & Deploy → Root Directory = stripe-backend
+# (Blueprint uses rootDir below so deploys match.)
+# Set STRIPE_SECRET_KEY (and other env vars) in the service Environment tab — never commit secrets.
 
 services:
   - type: web
     name: clipflow-stripe-api
+    rootDir: stripe-backend
     env: node
     region: oregon
     plan: free

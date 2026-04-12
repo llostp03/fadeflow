@@ -1,20 +1,25 @@
-WHY RENDER FAILED
-=================
-Your API folders were NEVER pushed to GitHub — they were only on your PC (untracked in git).
-Render clones GitHub, so it had no stripe-backend/ and no src/package.json.
+Render — ClipFlow Stripe API
+=============================
 
-FIX
-===
-1) Commit and push (from repo root):
+1) Push the repo to GitHub (includes stripe-backend/ and render.yaml).
 
-   git add package.json render.yaml src stripe-backend
-   git commit -m "Add Stripe API and Render config"
-   git push
+2) Backend Web Service — Root Directory
 
-2) In Render: Root Directory = EMPTY
-   Build:  npm install
-   Start:  npm start
+   Dashboard: your backend service → Settings → Build & Deploy → Root Directory
 
-3) Environment: STRIPE_SECRET_KEY = sk_...
+   Set to:  stripe-backend
 
-4) Redeploy.
+   Build:   npm install
+   Start:   npm start
+
+   (If you use the Blueprint from render.yaml, rootDir: stripe-backend should match this.)
+
+3) Environment (same service → Environment):
+
+   STRIPE_SECRET_KEY = sk_...
+   STRIPE_PRICE_ID = price_...
+   CHECKOUT_SUCCESS_URL = https://your-frontend.example.com/success
+   CHECKOUT_CANCEL_URL = https://your-frontend.example.com/cancel
+   STRIPE_WEBHOOK_SECRET = whsec_...
+
+4) Save and redeploy.

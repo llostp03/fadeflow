@@ -1,7 +1,7 @@
 {
   "name": "fadeflow",
   "private": true,
-  "description": "Monorepo root — Render can use Root Directory empty + npm install / npm start",
+  "description": "Monorepo root — Render: Settings → Root Directory = stripe-backend (see render.yaml). Local: npm start cds into stripe-backend.",
   "scripts": {
     "postinstall": "cd stripe-backend && npm install",
     "start": "cd stripe-backend && npm start",
