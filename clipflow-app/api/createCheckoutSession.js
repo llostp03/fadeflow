@@ -1,8 +1,8 @@
 import { API_BASE } from '../config/appConstants';
 
 /**
- * POST /create-checkout-session — ClipFlow Pro (subscription). Requires a real account id
- * so Stripe metadata and webhooks can update the correct `users` row.
+ * POST /create-checkout-session — ClipFlow Pro (one-time Stripe Checkout payment). Requires a real
+ * account id so Stripe metadata and webhooks can update the correct `users` row.
  *
  * @param {string | number} userId — must be the logged-in user's id (`String(user.id)` at call sites)
  * @returns {Promise<string>} checkout URL
@@ -10,7 +10,7 @@ import { API_BASE } from '../config/appConstants';
 export async function createSubscriptionCheckoutSession(userId) {
   const idStr = userId != null ? String(userId).trim() : '';
   if (!idStr) {
-    throw new Error('userId is required for subscription checkout.');
+    throw new Error('userId is required for ClipFlow Pro checkout.');
   }
 
   const res = await fetch(`${API_BASE}/create-checkout-session`, {

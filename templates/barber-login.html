@@ -186,7 +186,7 @@
         }
 
         if (res.ok) {
-          alert("Login success — open the ClipFlow app to manage your subscription and bookings.");
+          window.location.href = "/";
         } else {
           const msg =
             typeof data.detail === "string"

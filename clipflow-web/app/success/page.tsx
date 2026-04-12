@@ -6,7 +6,7 @@ export default function SuccessPage() {
           Payment successful
         </h1>
         <p className="text-zinc-300">
-          Your ClipFlow Pro subscription is processing. Go back to the app or home page and refresh your account.
+          Your one-time ClipFlow Pro payment is processing. Go back to the app or home page and refresh your account.
         </p>
         <a
           href="/"

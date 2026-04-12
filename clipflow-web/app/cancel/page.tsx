@@ -6,7 +6,7 @@ export default function CancelPage() {
           Checkout canceled
         </h1>
         <p className="text-zinc-300">
-          No worries. Your account is still there, and you can upgrade anytime.
+          No worries. Your account is still there, and you can unlock ClipFlow Pro anytime.
         </p>
         <a
           href="/"

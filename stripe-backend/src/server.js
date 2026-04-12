@@ -224,47 +224,24 @@ function updateUsersSubscriptionByStripeSubscriptionId(subscriptionId, status) {
 }
 
 function handleCheckoutSessionCompleted(session) {
-  if (session.mode !== "subscription") {
-    return;
+  if (session.mode === "payment") {
+    const ps = session.payment_status;
+    if (ps !== "paid" && ps !== "no_payment_required") {
+      return;
+    }
   }
-  const meta = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
-  const userIdRaw = typeof meta.userId === "string" ? meta.userId.trim() : "";
-  const customerId = customerIdFromStripeObject(session.customer);
-  const subscriptionId =
-    typeof session.subscription === "string"
-      ? session.subscription
-      : session.subscription && typeof session.subscription === "object"
-        ? session.subscription.id
-        : null;
 
-  if (!userIdRaw) {
-    console.log(
-      "[stripe-webhook] checkout.session.completed (no userId metadata). customer:",
-      customerId,
-      "subscription:",
-      subscriptionId
-    );
-    return;
-  }
-  const userId = Number.parseInt(userIdRaw, 10);
+  const userId = Number(session.metadata?.userId);
   if (!Number.isInteger(userId) || userId < 1) {
-    console.warn("[stripe-webhook] Invalid userId in metadata:", userIdRaw);
     return;
   }
+
   try {
     const result = db
-      .prepare(
-        `UPDATE users SET subscription_status = ?, stripe_customer_id = ?, stripe_subscription_id = ? WHERE id = ?`
-      )
-      .run("active", customerId, subscriptionId, userId);
+      .prepare(`UPDATE users SET subscription_status = 'active' WHERE id = ?`)
+      .run(userId);
     if (result.changes > 0) {
       console.log("[stripe-webhook] checkout.session.completed → active user id", userId);
-    } else {
-      console.warn(
-        "[stripe-webhook] No user row for id",
-        userId,
-        "(metadata userId did not match users.id)"
-      );
     }
   } catch (e) {
     console.error("[stripe-webhook] checkout DB update failed:", e instanceof Error ? e.message : e);
@@ -333,14 +310,14 @@ app.use(cors());
 
 /**
  * POST /stripe-webhook
- * Subscription lifecycle only (`users.*` Stripe columns + subscription_status). Does not handle
+ * ClipFlow Pro access (`users.*` Stripe columns + subscription_status). Does not handle
  * PaymentIntent success for one-time bookings — those are confirmed via `/bookings` + PI retrieve.
  *
  * Raw body + signature verification. Register these events in Stripe Dashboard:
- *   checkout.session.completed     — first purchase; links user + customer + subscription ids
- *   invoice.paid                   — renewals (and paid cycles) → active
- *   invoice.payment_failed         — failed renewal → past_due (paywall)
- *   customer.subscription.updated  — status changes (cancel at period end, past_due, etc.)
+ *   checkout.session.completed     — sets subscription_status active from session.metadata.userId (payment mode checks payment_status)
+ *   invoice.paid                   — subscription renewals → active (ignored for payment-only Checkout)
+ *   invoice.payment_failed         — failed renewal → past_due (subscriptions only)
+ *   customer.subscription.updated  — subscription status changes
  *   customer.subscription.deleted  — subscription removed → canceled
  */
 app.post(
@@ -784,31 +761,28 @@ app.post("/bookings", async (req, res) => {
 /**
  * POST /create-checkout-session
  *
- * ClipFlow Pro (barber app access): Stripe Checkout subscription mode + `/stripe-webhook` updates
- * `users.subscription_status`. Keep this separate from one-time booking PaymentIntents + `/bookings`.
+ * ClipFlow Pro (barber app access): Stripe Checkout in **payment** mode (one-time charge) +
+ * `/stripe-webhook` `checkout.session.completed` sets `users.subscription_status` to active.
+ * Keep this separate from one-time booking PaymentIntents + `/bookings`.
  *
- * Stripe Checkout (hosted page), subscription mode — not the mobile Payment Sheet
- * (`/create-payment-intent`). Use this for clients that redirect to Stripe Checkout.
+ * Stripe Checkout (hosted page) — not the mobile Payment Sheet (`/create-payment-intent`).
  *
  * Body (optional): { userId?: string } — legacy mobile client. Prefer
  * `Authorization: Bearer demo-token-<userId>` (same as GET /me); user id is stored on session metadata.
  *
  * Env:
- *   STRIPE_SUBSCRIPTION_PRICE_ID — required (e.g. price_xxx from Stripe Dashboard → Product → Price)
- *   CHECKOUT_SUCCESS_URL — default http://localhost:3000/success
- *   CHECKOUT_CANCEL_URL  — default http://localhost:3000/cancel
+ *   STRIPE_PRICE_ID — required: a **one-time** Price ID (price_xxx)
+ *   CHECKOUT_SUCCESS_URL — default http://localhost:3000/success if unset
+ *   CHECKOUT_CANCEL_URL — default http://localhost:3000/cancel if unset
  *
  * Optional: put `{CHECKOUT_SESSION_ID}` in CHECKOUT_SUCCESS_URL per Stripe docs.
  */
 app.post("/create-checkout-session", async (req, res) => {
-  const priceId =
-    typeof process.env.STRIPE_SUBSCRIPTION_PRICE_ID === "string"
-      ? process.env.STRIPE_SUBSCRIPTION_PRICE_ID.trim()
-      : "";
-  if (!priceId.startsWith("price_")) {
-    return res.status(503).json({
-      detail:
-        "Set STRIPE_SUBSCRIPTION_PRICE_ID to your Stripe Price ID (starts with price_).",
+  const priceId = process.env.STRIPE_PRICE_ID;
+
+  if (!priceId || !priceId.startsWith("price_")) {
+    return res.status(500).json({
+      detail: "Set STRIPE_PRICE_ID to your Stripe Price ID (starts with price_).",
     });
   }
 
@@ -825,21 +799,28 @@ app.post("/create-checkout-session", async (req, res) => {
   if (uidFromAuth != null) {
     userId = String(uidFromAuth);
   }
+  const user = { id: userId };
 
   try {
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
+      mode: "payment",
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: userId ? { userId } : {},
+      metadata: {
+        userId: String(user.id),
+      },
     });
 
     if (!session.url) {
       return res.status(500).json({ detail: "Stripe did not return a checkout URL." });
     }
-    return res.json({ url: session.url });
+    return res.status(200).json({ url: session.url });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[create-checkout-session]", err);

@@ -139,7 +139,7 @@ export async function getMe(token: string) {
 }
 
 /**
- * POST /create-checkout-session — opens Stripe Checkout (subscription).
+ * POST /create-checkout-session — opens Stripe Checkout (one-time payment).
  * Sends the same Bearer token as GET /me; API resolves `userId` for Stripe metadata.
  */
 export async function createCheckoutSession(token: string) {

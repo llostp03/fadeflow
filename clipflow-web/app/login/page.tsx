@@ -2,14 +2,16 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { getMe, login, setStoredToken } from "@/lib/api";
-import { needsPaywall } from "@/lib/subscription";
+import { useRouter } from "next/navigation";
+import { login, setStoredToken } from "@/lib/api";
 import { Button } from "@/components/Button";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const submittingRef = useRef(false);
 
@@ -18,6 +20,7 @@ export default function LoginPage() {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setLoading(true);
+    setError("");
     try {
       const data = await login({ email, password });
       const token =
@@ -26,27 +29,10 @@ export default function LoginPage() {
         setStoredToken(token);
       }
 
-      let message = "Login success.";
-      if (token) {
-        try {
-          const meData = await getMe(token);
-          if (meData) {
-            if (needsPaywall(meData.subscription_status)) {
-              message +=
-                " Your subscription is not active — open the ClipFlow app to upgrade to ClipFlow Pro.";
-            } else {
-              message += " ClipFlow Pro is active.";
-            }
-          }
-        } catch {
-          /* optional /me failure — still logged in */
-        }
-      }
-
-      alert(message);
+      router.replace("/");
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : "Error logging in");
+      setError(err instanceof Error ? err.message : "Error logging in");
     } finally {
       submittingRef.current = false;
       setLoading(false);
@@ -63,6 +49,12 @@ export default function LoginPage() {
         <p className="mb-6 text-center text-sm text-zinc-400">
           Same email and password as the mobile app.
         </p>
+
+        {error ? (
+          <p className="mb-4 rounded-lg border border-red-500/40 bg-red-950/40 px-3 py-2 text-center text-sm text-red-200" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         <form
           ref={formRef}

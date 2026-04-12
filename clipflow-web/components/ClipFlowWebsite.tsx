@@ -19,6 +19,7 @@ import {
   getMe,
   getStoredToken,
   login,
+  setStoredToken,
   signup,
   type AuthUser,
 } from "@/lib/api";
@@ -55,7 +56,7 @@ const features = [
   {
     icon: ShieldCheck,
     title: "Pro access control",
-    text: "Barbers create an account, upgrade to Pro, and unlock their full workflow without manual onboarding.",
+    text: "Barbers create an account, pay once to unlock Pro, and open their full workflow without manual onboarding.",
   },
   {
     icon: Scissors,
@@ -67,7 +68,7 @@ const features = [
 const steps = [
   "Create your ClipFlow account",
   "Sign in and explore the app",
-  "Upgrade to ClipFlow Pro",
+  "Pay once to unlock ClipFlow Pro",
   "Unlock bookings, payments, and growth tools",
 ];
 
@@ -269,12 +270,14 @@ export default function ClipFlowWebsite() {
         password,
       });
 
-      window.localStorage.setItem("clipflow_token", result.token);
+      setStoredToken(result.token);
       setToken(result.token);
-      setCurrentUser(result.user);
-      setMeUser(result.user);
-      setEmail(result.user.email);
-      setName(result.user.name?.trim() || "ClipFlow Barber");
+
+      const me = await getMe(result.token);
+      setCurrentUser(me);
+      setMeUser(me);
+
+      setError("");
       setMessage("Signed in successfully.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in.");
@@ -315,12 +318,17 @@ export default function ClipFlowWebsite() {
     setError("");
   };
 
-  const isLoggedIn = !!meUser;
-  const sub = String(currentUser?.subscription_status ?? "").trim().toLowerCase();
+  const signedInUser = meUser ?? currentUser;
+  const isLoggedIn = !!signedInUser;
+  const sub = String(signedInUser?.subscription_status ?? "").trim().toLowerCase();
   const subscriptionActive = sub === "active";
-  const showPaywall = !!(currentUser && !subscriptionActive);
+  const showPaywall = !!(signedInUser && !subscriptionActive);
 
   const handleUpgrade = async () => {
+    console.log("UPGRADE CLICKED", { hasToken: !!token, checkoutLoading });
+
+    if (checkoutLoading) return;
+
     if (!token) {
       setError("Sign in first.");
       return;
@@ -332,7 +340,11 @@ export default function ClipFlowWebsite() {
     try {
       setCheckoutLoading(true);
 
+      console.log("about to call createCheckoutSession");
+
       const data = await createCheckoutSession(token);
+
+      console.log("checkout response", data);
 
       if (!data?.url) {
         throw new Error("Checkout URL was not returned.");
@@ -340,6 +352,7 @@ export default function ClipFlowWebsite() {
 
       window.location.href = data.url;
     } catch (err) {
+      console.error("UPGRADE ERROR", err);
       setError(err instanceof Error ? err.message : "Unable to start checkout.");
     } finally {
       setCheckoutLoading(false);
@@ -348,10 +361,10 @@ export default function ClipFlowWebsite() {
 
   const status = useMemo(() => {
     if (meLoading) return "…";
-    if (!meUser) return "locked";
+    if (!signedInUser) return "locked";
     if (showPaywall) return "paywall";
     return "active";
-  }, [meLoading, meUser, showPaywall]);
+  }, [meLoading, signedInUser, showPaywall]);
 
   return (
     <div className="min-h-screen bg-[#05060b] text-white">
@@ -401,7 +414,7 @@ export default function ClipFlowWebsite() {
               href="/signup"
               className={cn(
                 buttonVariants({ variant: "default" }),
-                "bg-yellow-400 font-semibold text-black hover:bg-yellow-300",
+                "bg-yellow-400 text-black hover:bg-yellow-300 font-semibold",
               )}
             >
               Create account
@@ -427,7 +440,7 @@ export default function ClipFlowWebsite() {
                 <span className="text-yellow-400">ClipFlow</span>.
               </h1>
               <p className="max-w-xl text-lg leading-8 text-zinc-300 md:text-xl">
-                Show off your brand, let barbers create accounts, upgrade to ClipFlow Pro, and unlock
+                Show off your brand, let barbers create accounts, pay once to unlock ClipFlow Pro, and open
                 a premium dashboard for bookings, payments, and growth.
               </p>
             </div>
@@ -477,9 +490,9 @@ export default function ClipFlowWebsite() {
               </Card>
               <Card className="rounded-2xl border-white/10 bg-white/5">
                 <CardContent className="p-5">
-                  <div className="text-3xl font-black text-yellow-400">Pro</div>
+                  <div className="text-3xl font-black text-yellow-400">One-time</div>
                   <p className="mt-2 text-sm text-zinc-300">
-                    Unlock premium features only after payment and active subscription.
+                    Pay once, unlock ClipFlow Pro — one-time access to the full product.
                   </p>
                 </CardContent>
               </Card>
@@ -505,7 +518,7 @@ export default function ClipFlowWebsite() {
                   <div>
                     <CardTitle className="text-2xl font-bold">ClipFlow Pro preview</CardTitle>
                     <CardDescription className="text-zinc-300">
-                      What barbers see after login and upgrade
+                      What barbers see after login and unlocking Pro
                     </CardDescription>
                   </div>
                   <Badge
@@ -577,22 +590,26 @@ export default function ClipFlowWebsite() {
                   {!isLoggedIn && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 p-4 text-center">
                       <p className="max-w-[220px] rounded-full border border-white/15 bg-[#0b0e15]/90 px-4 py-2 text-sm text-zinc-200">
-                        Sign in to sync live subscription status
+                        Sign in to sync your Pro unlock status
                       </p>
                     </div>
                   )}
                 {isLoggedIn && showPaywall && (
                   <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 p-4 text-center">
                     <div className="flex max-w-[280px] flex-col items-center gap-3 rounded-2xl border border-yellow-400/25 bg-[#0b0e15]/95 px-4 py-4 text-sm text-yellow-100">
-                      <p>Upgrade to ClipFlow Pro to unlock this preview.</p>
+                      <p>One-time access — unlock ClipFlow Pro to open this preview.</p>
                       <Button
                         type="button"
                         onClick={handleUpgrade}
                         disabled={!token || checkoutLoading}
-                        className="bg-yellow-400 font-semibold text-black hover:bg-yellow-300"
+                        className="bg-yellow-400 text-black hover:bg-yellow-300 font-semibold"
                       >
-                        {checkoutLoading ? "Opening checkout..." : "Upgrade to ClipFlow Pro"}
+                        {checkoutLoading ? "Opening checkout..." : "Unlock ClipFlow Pro"}
                       </Button>
+                      <div className="text-sm text-zinc-300">
+                        token: {token ? "yes" : "no"} | currentUser: {currentUser ? "yes" : "no"} | meUser:{" "}
+                        {meUser ? "yes" : "no"}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -606,7 +623,7 @@ export default function ClipFlowWebsite() {
           <SectionTitle
             badge="Features"
             title="Everything the ClipFlow website needs"
-            text="This first version combines your marketing site, create-account flow, sign-in path, payment upgrade story, and a barber dashboard preview in one place."
+            text="This first version combines your marketing site, create-account flow, sign-in path, one-time Pro unlock story, and a barber dashboard preview in one place."
           />
           <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {features.map((feature) => {
@@ -635,7 +652,7 @@ export default function ClipFlowWebsite() {
               <SectionTitle
                 badge="How it works"
                 title="A clean self-serve barber flow"
-                text="People browse the site, create an account, sign in, and only unlock ClipFlow Pro when their subscription becomes active."
+                text="People browse the site, create an account, sign in, and unlock ClipFlow Pro after a one-time payment."
               />
             </div>
             <div className="space-y-4">
@@ -653,9 +670,9 @@ export default function ClipFlowWebsite() {
                         {index === 1 &&
                           "Signed-in barbers can access their account and see whether Pro is unlocked."}
                         {index === 2 &&
-                          "Stripe checkout becomes the unlock moment for the full product."}
+                          "One-time Stripe checkout is the unlock moment for the full product."}
                         {index === 3 &&
-                          "Once active, they get the dashboard, payments flow, and booking tools."}
+                          "Once Pro is unlocked, they get the dashboard, payments flow, and booking tools."}
                       </p>
                     </div>
                   </CardContent>
@@ -668,8 +685,8 @@ export default function ClipFlowWebsite() {
         <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 md:px-8">
           <SectionTitle
             badge="Pricing"
-            title="One clear upgrade path"
-            text="Keep the choice simple. Let barbers explore ClipFlow, then upgrade to Pro when they are ready to unlock the full system."
+            title="One clear unlock path"
+            text="Keep the choice simple. Let barbers explore ClipFlow, then pay once to unlock Pro when they are ready for the full system."
           />
           <div className="mt-12 grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
             <Card className="overflow-hidden rounded-[32px] border-yellow-400/30 bg-gradient-to-br from-yellow-400/10 via-white/5 to-white/5">
@@ -679,18 +696,19 @@ export default function ClipFlowWebsite() {
                   <div className="text-xl font-bold">ClipFlow Pro</div>
                 </div>
                 <div className="text-5xl font-black">
-                  $29<span className="text-xl font-semibold text-zinc-400">/mo</span>
+                  $99<span className="text-xl font-semibold text-zinc-400"> one-time</span>
                 </div>
+                <p className="mt-2 text-sm font-semibold text-yellow-200/90">Pay once, unlock ClipFlow Pro</p>
                 <p className="mt-4 max-w-xl leading-7 text-zinc-300">
                   Give barbers the premium booking, payment, and account experience they expect, with
-                  a locked-to-unlocked path that makes the app feel valuable.
+                  a simple one-time unlock that makes the app feel valuable.
                 </p>
                 <div className="mt-8 grid gap-3 sm:grid-cols-2">
                   {[
                     "Premium booking flow",
                     "Payments and deposits",
                     "Barber sign-in and account access",
-                    "Pro unlock after Stripe payment",
+                    "Pro unlock after one-time Stripe checkout",
                     "Dashboard view",
                     "Branded client-facing experience",
                   ].map((item) => (
@@ -704,7 +722,7 @@ export default function ClipFlowWebsite() {
                   ))}
                 </div>
                 <div className="mt-8 flex flex-wrap gap-3">
-                  {currentUser && subscriptionActive ? (
+                  {signedInUser && subscriptionActive ? (
                     <Button
                       type="button"
                       disabled
@@ -712,24 +730,30 @@ export default function ClipFlowWebsite() {
                     >
                       ClipFlow Pro active
                     </Button>
-                  ) : currentUser && !subscriptionActive ? (
-                    <Button
-                      type="button"
-                      onClick={handleUpgrade}
-                      disabled={!token || checkoutLoading}
-                      className="bg-yellow-400 font-semibold text-black hover:bg-yellow-300"
-                    >
-                      {checkoutLoading ? "Opening checkout..." : "Upgrade to ClipFlow Pro"}
-                    </Button>
+                  ) : signedInUser && !subscriptionActive ? (
+                    <div className="flex flex-col gap-1">
+                      <Button
+                        type="button"
+                        onClick={handleUpgrade}
+                        disabled={!token || checkoutLoading}
+                        className="bg-yellow-400 text-black hover:bg-yellow-300 font-semibold"
+                      >
+                        {checkoutLoading ? "Opening checkout..." : "Unlock ClipFlow Pro"}
+                      </Button>
+                      <div className="text-sm text-zinc-300">
+                        token: {token ? "yes" : "no"} | currentUser: {currentUser ? "yes" : "no"} | meUser:{" "}
+                        {meUser ? "yes" : "no"}
+                      </div>
+                    </div>
                   ) : (
                     <Link
                       href="#auth"
                       className={cn(
                         buttonVariants({ variant: "default" }),
-                        "bg-yellow-400 font-semibold text-black hover:bg-yellow-300",
+                        "bg-yellow-400 text-black hover:bg-yellow-300 font-semibold",
                       )}
                     >
-                      Sign in to upgrade
+                      Sign in to unlock Pro
                     </Link>
                   )}
                   <a
@@ -754,7 +778,7 @@ export default function ClipFlowWebsite() {
                 <div className="space-y-4 text-sm leading-7 text-zinc-300">
                   <p>
                     Barbers can create an account immediately, but they only unlock the real value
-                    once their subscription becomes active.
+                    after a one-time payment turns Pro on.
                   </p>
                   <p>That keeps the app self-serve while still making payment the moment that matters.</p>
                   <p>It feels like a real SaaS product, not a manual email flow.</p>
@@ -762,7 +786,7 @@ export default function ClipFlowWebsite() {
                 <div className="rounded-2xl border border-white/10 bg-[#0c0f16] p-4">
                   <div className="text-sm text-zinc-400">Unlock rule</div>
                   <div className="mt-2 text-base font-semibold">
-                    user exists + subscription_status === &apos;active&apos;
+                    one-time checkout completes → subscription_status === &apos;active&apos;
                   </div>
                 </div>
               </CardContent>
@@ -930,8 +954,8 @@ export default function ClipFlowWebsite() {
                 <div className="space-y-4">
                   {[
                     "Anyone can create an account.",
-                    "Signed-in barbers without an active subscription see the paywall.",
-                    "Stripe payment + webhook sets subscription_status to active.",
+                    "Signed-in barbers who have not unlocked Pro yet see the paywall.",
+                    "One-time Stripe checkout + webhook sets subscription_status to active.",
                     "Once active, the main dashboard unlocks.",
                   ].map((line) => (
                     <div
@@ -952,7 +976,7 @@ export default function ClipFlowWebsite() {
           <SectionTitle
             badge="Dashboard"
             title="A barber dashboard that feels premium"
-            text="This gives you a strong direction for the post-login experience: subscription status, appointments, revenue, and simple actions in one place."
+            text="This gives you a strong direction for the post-login experience: Pro unlock status, appointments, revenue, and simple actions in one place."
           />
           <div className="mt-12 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
             <Card className="overflow-hidden rounded-[32px] border-white/10 bg-white/5">
@@ -961,10 +985,10 @@ export default function ClipFlowWebsite() {
                   <div>
                     <div className="text-sm text-zinc-400">Barber account</div>
                     <div className="text-3xl font-black mt-1">
-                      {currentUser?.name || "Guest barber"}
+                      {signedInUser?.name || "Guest barber"}
                     </div>
                     <div className="text-zinc-300 mt-1">
-                      {currentUser?.email || "Sign in to load your account"}
+                      {signedInUser?.email || "Sign in to load your account"}
                     </div>
                   </div>
                   <Badge
@@ -974,10 +998,10 @@ export default function ClipFlowWebsite() {
                         : "bg-yellow-500/20 text-yellow-300 border-yellow-400/30 px-4 py-1"
                     }
                   >
-                    {currentUser
+                    {signedInUser
                       ? subscriptionActive
                         ? "ClipFlow Pro Active"
-                        : "Needs upgrade"
+                        : "Pro locked"
                       : "Signed out"}
                   </Badge>
                 </div>
@@ -1092,7 +1116,7 @@ export default function ClipFlowWebsite() {
                     <Crown className="h-10 w-10 text-yellow-400" />
                     <p className="text-lg font-semibold text-white">ClipFlow Pro required</p>
                     <p className="max-w-sm text-sm text-zinc-300">
-                      Your subscription is not active yet. Pay with Stripe, then return here and click{" "}
+                      ClipFlow Pro is not unlocked yet. Complete the one-time payment in Stripe, then return here and click{" "}
                       <strong className="text-white">Refresh account</strong> after the webhook updates
                       your status.
                     </p>
@@ -1100,10 +1124,14 @@ export default function ClipFlowWebsite() {
                       type="button"
                       onClick={handleUpgrade}
                       disabled={!token || checkoutLoading}
-                      className="bg-yellow-400 font-semibold text-black hover:bg-yellow-300"
+                      className="bg-yellow-400 text-black hover:bg-yellow-300 font-semibold"
                     >
-                      {checkoutLoading ? "Opening checkout..." : "Upgrade to ClipFlow Pro"}
+                      {checkoutLoading ? "Opening checkout..." : "Unlock ClipFlow Pro"}
                     </Button>
+                    <div className="text-sm text-zinc-300">
+                      token: {token ? "yes" : "no"} | currentUser: {currentUser ? "yes" : "no"} | meUser:{" "}
+                      {meUser ? "yes" : "no"}
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -1160,11 +1188,11 @@ export default function ClipFlowWebsite() {
 
               <Card className="rounded-[32px] border-white/10 bg-white/5">
                 <CardContent className="space-y-4 p-6">
-                  <h4 className="text-lg font-bold">Subscription preview</h4>
+                  <h4 className="text-lg font-bold">Pro access preview</h4>
                   <p className="text-sm leading-7 text-zinc-300">
                     After you sign in, this page reads <code className="text-yellow-200/90">GET /me</code>{" "}
-                    and uses <code className="text-yellow-200/90">subscription_status</code>: locked when
-                    signed out, paywall when not active, and full dashboard when active.
+                    and uses <code className="text-yellow-200/90">subscription_status</code> (one-time unlock): locked when
+                    signed out, paywall when Pro is not active yet, and full dashboard when active.
                   </p>
                   <div className="rounded-2xl border border-white/10 bg-[#0d1017] p-4">
                     <div className="text-sm text-zinc-400">Current state</div>
@@ -1180,7 +1208,7 @@ export default function ClipFlowWebsite() {
           <SectionTitle
             badge="Social proof"
             title="Make ClipFlow feel trusted fast"
-            text="A strong first impression matters. These cards give you a place to add real barber wins once users start paying and getting results."
+            text="A strong first impression matters. These cards give you a place to add real barber wins once users unlock Pro and get results."
           />
           <div className="mt-12 grid gap-5 md:grid-cols-3">
             {testimonials.map((item) => (
