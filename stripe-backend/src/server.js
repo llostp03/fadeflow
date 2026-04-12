@@ -897,15 +897,7 @@ app.post("/create-checkout-session", async (req, res) => {
     });
   }
 
-  // Same as `${CHECKOUT_SUCCESS_URL}?session_id={CHECKOUT_SESSION_ID}` when URL has no prior query string.
-  console.log(
-    "[create-checkout-session] user.id → metadata.userId:",
-    String(user.id),
-    "| success_url:",
-    successUrl,
-    "| cancel_url:",
-    cancelUrl
-  );
+  console.log("CHECKOUT USER ID:", user?.id);
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -925,6 +917,9 @@ app.post("/create-checkout-session", async (req, res) => {
         userId: String(user.id),
       },
     });
+
+    console.log("CHECKOUT SESSION ID:", session.id);
+    console.log("CHECKOUT SESSION METADATA SENT:", session.metadata);
 
     if (!session.url) {
       return res.status(500).json({ detail: "Stripe did not return a checkout URL." });
