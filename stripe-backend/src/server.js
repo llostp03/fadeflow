@@ -303,8 +303,8 @@ function applyCheckoutSessionUnlock(session) {
 
 function handleCheckoutSessionCompleted(session) {
   console.log("WEBHOOK CHECKOUT SESSION ID:", session.id);
-  console.log("STRIPE SESSION METADATA:", session.metadata);
-  console.log("RESOLVED USER ID:", session.metadata?.userId);
+  console.log("WEBHOOK SESSION METADATA:", session.metadata);
+  console.log("WEBHOOK RESOLVED USER ID:", session.metadata?.userId);
 
   const result = applyCheckoutSessionUnlock(session);
   if (result.reason === "payment_not_complete") {
