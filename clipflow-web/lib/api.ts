@@ -49,6 +49,18 @@ async function parseJsonSafe(res: Response) {
   }
 }
 
+/** Prefer `detail` (Express), then `message` / `error`; include status when unknown. */
+function detailFromApiResponse(data: unknown, res: Response, fallback: string): string {
+  if (data && typeof data === "object") {
+    const o = data as Record<string, unknown>;
+    if (typeof o.detail === "string") return o.detail;
+    if (typeof o.detail === "number") return String(o.detail);
+    if (typeof o.message === "string") return o.message;
+    if (typeof o.error === "string") return o.error;
+  }
+  return `${fallback} (HTTP ${res.status})`;
+}
+
 export async function signup(payload: SignupPayload) {
   const res = await fetch(`${API_BASE}/signup`, {
     method: "POST",
@@ -154,11 +166,7 @@ export async function createCheckoutSession(token: string) {
   const data = await parseJsonSafe(res);
 
   if (!res.ok) {
-    throw new Error(
-      typeof data?.detail === "string"
-        ? data.detail
-        : "Unable to start checkout."
-    );
+    throw new Error(detailFromApiResponse(data, res, "Unable to start checkout."));
   }
 
   return data as { url?: string };

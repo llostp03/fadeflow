@@ -167,6 +167,21 @@ function customerIdFromStripeObject(customerField) {
   return null;
 }
 
+/** Trim and strip wrapping quotes from Render / .env pastes so `price_...` validates correctly. */
+function normalizeStripePriceId(raw) {
+  if (typeof raw !== "string") {
+    return "";
+  }
+  let s = raw.trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 /**
  * Map Stripe Subscription.status to our users.subscription_status (paywall unlocks only on "active").
  */
@@ -778,11 +793,12 @@ app.post("/bookings", async (req, res) => {
  * Optional: put `{CHECKOUT_SESSION_ID}` in CHECKOUT_SUCCESS_URL per Stripe docs.
  */
 app.post("/create-checkout-session", async (req, res) => {
-  const priceId = process.env.STRIPE_PRICE_ID;
+  const priceId = normalizeStripePriceId(process.env.STRIPE_PRICE_ID);
 
   if (!priceId || !priceId.startsWith("price_")) {
     return res.status(500).json({
-      detail: "CHECKOUT DEBUG: STRIPE_PRICE_ID missing on live backend",
+      detail:
+        "CHECKOUT DEBUG: STRIPE_PRICE_ID missing or not a price id after trim (paste from Stripe with no spaces/quotes; must start with price_).",
     });
   }
 
