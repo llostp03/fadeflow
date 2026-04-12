@@ -1,19 +1,151 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { AUTH_TOKEN_STORAGE_KEY, getMe } from "@/lib/api";
+import { isActiveSubscription } from "@/lib/subscription";
+
+const POLL_MS = 2000;
+const MAX_ATTEMPTS = 30;
+
+type Phase = "checking" | "unlocked" | "pending" | "no_token";
+
 export default function SuccessPage() {
+  const [phase, setPhase] = useState<Phase>("checking");
+  const [checkError, setCheckError] = useState<string | null>(null);
+
+  const runCheckOnce = useCallback(async (token: string) => {
+    const me = await getMe(token);
+    if (isActiveSubscription(me.subscription_status)) {
+      setPhase("unlocked");
+      return true;
+    }
+    return false;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+        : null;
+
+    if (!token) {
+      setPhase("no_token");
+      return;
+    }
+
+    let attempts = 0;
+
+    const poll = async () => {
+      while (!cancelled && attempts < MAX_ATTEMPTS) {
+        attempts += 1;
+        try {
+          const ok = await runCheckOnce(token);
+          if (cancelled) return;
+          if (ok) return;
+        } catch (e) {
+          if (cancelled) return;
+          setCheckError(e instanceof Error ? e.message : "Could not reach account service.");
+        }
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
+      if (!cancelled) setPhase("pending");
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [runCheckOnce]);
+
+  const handleCheckAgain = async () => {
+    setCheckError(null);
+    const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    if (!token) {
+      setPhase("no_token");
+      return;
+    }
+    setPhase("checking");
+    try {
+      const ok = await runCheckOnce(token);
+      if (!ok) setPhase("pending");
+    } catch (e) {
+      setCheckError(e instanceof Error ? e.message : "Check failed.");
+      setPhase("pending");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
       <div className="max-w-lg text-center space-y-4">
-        <h1 className="text-4xl font-bold">
-          Payment successful
-        </h1>
-        <p className="text-zinc-300">
-          Your one-time ClipFlow Pro payment is processing. Go back to the app or home page and refresh your account.
-        </p>
-        <a
-          href="/"
-          className="inline-block rounded-2xl bg-yellow-400 px-6 py-3 font-bold text-black"
-        >
-          Return home
-        </a>
+        <h1 className="text-4xl font-bold">Payment successful</h1>
+
+        {phase === "checking" && (
+          <p className="text-zinc-300">
+            Confirming your ClipFlow Pro access with your account… This usually takes a few seconds.
+          </p>
+        )}
+
+        {phase === "unlocked" && (
+          <>
+            <p className="text-zinc-300">
+              Your account is unlocked. ClipFlow Pro is active on this browser session.
+            </p>
+            <Link
+              href="/"
+              className="inline-block rounded-2xl bg-yellow-400 px-6 py-3 font-bold text-black"
+            >
+              Back to home
+            </Link>
+          </>
+        )}
+
+        {phase === "pending" && (
+          <>
+            <p className="text-zinc-300">
+              Payment is complete, but we could not confirm Pro access yet. The server may still be
+              processing your payment (webhook). Try again in a moment, or open the home page and use
+              &quot;Refresh account&quot; after signing in.
+            </p>
+            {checkError && (
+              <p className="text-sm text-red-300" role="alert">
+                {checkError}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleCheckAgain()}
+                className="inline-block rounded-2xl bg-yellow-400 px-6 py-3 font-bold text-black"
+              >
+                Check again
+              </button>
+              <Link
+                href="/"
+                className="inline-block rounded-2xl border border-white/20 px-6 py-3 font-semibold text-white hover:bg-white/10"
+              >
+                Return home
+              </Link>
+            </div>
+          </>
+        )}
+
+        {phase === "no_token" && (
+          <>
+            <p className="text-zinc-300">
+              We don&apos;t see a ClipFlow sign-in on this browser (no saved session). If you paid while
+              signed in elsewhere, sign in here with the same account—your Pro unlock is tied to your
+              user id on the server.
+            </p>
+            <Link
+              href="/#auth"
+              className="inline-block rounded-2xl bg-yellow-400 px-6 py-3 font-bold text-black"
+            >
+              Sign in
+            </Link>
+          </>
+        )}
       </div>
     </div>
   );
