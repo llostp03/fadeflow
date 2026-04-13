@@ -862,6 +862,53 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * GET /health/checkout — safe diagnostics for Stripe Checkout unlock (no secrets).
+ * Use this to verify CHECKOUT_SUCCESS_URL points at your real site, not localhost.
+ */
+app.get("/health/checkout", (_req, res) => {
+  const priceId = normalizeStripePriceId(process.env.STRIPE_PRICE_ID || "");
+  const baseSuccess =
+    (typeof process.env.CHECKOUT_SUCCESS_URL === "string" && process.env.CHECKOUT_SUCCESS_URL.trim()) || "";
+  let checkoutSuccessHost = null;
+  let looksLikeLocalhost = false;
+  try {
+    if (baseSuccess.startsWith("http")) {
+      const withoutTemplate = baseSuccess.split("{")[0].trim();
+      checkoutSuccessHost = new URL(withoutTemplate).hostname;
+      looksLikeLocalhost =
+        checkoutSuccessHost === "localhost" ||
+        checkoutSuccessHost === "127.0.0.1" ||
+        checkoutSuccessHost.startsWith("192.168.");
+    }
+  } catch {
+    checkoutSuccessHost = null;
+  }
+  const sk = typeof process.env.STRIPE_SECRET_KEY === "string" ? process.env.STRIPE_SECRET_KEY : "";
+  const stripeKeyMode = sk.startsWith("sk_test_")
+    ? "test"
+    : sk.startsWith("sk_live_")
+      ? "live"
+      : "missing_or_invalid";
+  const webhookOk =
+    typeof process.env.STRIPE_WEBHOOK_SECRET === "string" && process.env.STRIPE_WEBHOOK_SECRET.trim().length > 0;
+  res.json({
+    ok: true,
+    stripe: {
+      keyMode: stripeKeyMode,
+      priceIdConfigured: priceId.startsWith("price_"),
+      webhookSecretConfigured: webhookOk,
+      checkoutSuccessUrlRaw: baseSuccess ? "[set]" : "[unset — defaults to http://localhost:3000/success]",
+      checkoutSuccessHost,
+      looksLikeLocalhostSuccessUrl: looksLikeLocalhost,
+      hint:
+        looksLikeLocalhost || !baseSuccess
+          ? "Set CHECKOUT_SUCCESS_URL on Render to your Vercel URL, e.g. https://YOUR_PROJECT.vercel.app/success — otherwise Stripe redirects users to localhost after paying."
+          : "Checkout return URL looks non-local. If unlock still fails, check webhook secret and Stripe Dashboard deliveries.",
+    },
+  });
+});
+
 // --- Marketing HTML (Render runs this Node app, not Python FastAPI) ---
 app.get("/", (_req, res) => {
   sendMarketingPage(res, { scrollToBook: false });

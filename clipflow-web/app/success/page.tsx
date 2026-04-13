@@ -68,6 +68,7 @@ export default function SuccessPage() {
         } catch (e) {
           if (!cancelled) {
             setCheckError(e instanceof Error ? e.message : "Could not confirm payment with server.");
+            setPhase("pending");
           }
         }
       }
@@ -135,6 +136,12 @@ export default function SuccessPage() {
       <div className="max-w-lg text-center space-y-4">
         <h1 className="text-4xl font-bold">Payment successful</h1>
 
+        {checkError ? (
+          <p className="text-sm text-red-300" role="alert">
+            {checkError}
+          </p>
+        ) : null}
+
         {phase === "checking" && (
           <p className="text-zinc-300">
             Confirming your ClipFlow Pro access with your account… This usually takes a few seconds.
@@ -162,11 +169,6 @@ export default function SuccessPage() {
               from the email receipt link or try &quot;Check again&quot;. Also confirm your API has
               STRIPE_WEBHOOK_SECRET set and the webhook URL registered in Stripe.
             </p>
-            {checkError && (
-              <p className="text-sm text-red-300" role="alert">
-                {checkError}
-              </p>
-            )}
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
