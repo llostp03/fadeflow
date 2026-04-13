@@ -679,6 +679,20 @@ export default function ClipFlowWebsite() {
                         </CardContent>
                       </Card>
                     </div>
+                    {subscriptionActive ? (
+                      <p className="text-xs leading-relaxed text-zinc-500">
+                        The stats and list above are <strong className="text-zinc-400">sample content</strong> on this
+                        marketing page. Pro is active when the badge says Active — scroll to{" "}
+                        <a href="#dashboard" className="text-yellow-300/90 underline-offset-2 hover:underline">
+                          Dashboard
+                        </a>{" "}
+                        and{" "}
+                        <a href="#studio" className="text-yellow-300/90 underline-offset-2 hover:underline">
+                          AI &amp; pricing
+                        </a>{" "}
+                        for your real tools.
+                      </p>
+                    ) : null}
                     <Card className="rounded-2xl border-white/10 bg-[#0b0e15]">
                       <CardContent className="space-y-3 p-4">
                         <div className="flex items-center justify-between">
@@ -1231,7 +1245,8 @@ export default function ClipFlowWebsite() {
                     </Link>
                   </div>
                 )}
-                {meLoading && token && (
+                {/* Only block the dashboard while loading if we are not already Pro — avoids “I’m active but nothing works” on every refresh/focus. */}
+                {meLoading && token && !subscriptionActive && (
                   <div className="absolute inset-0 z-[11] flex items-center justify-center rounded-[32px] bg-[#05060b]/75 p-6">
                     <p className="text-sm font-medium text-zinc-300">Loading your account…</p>
                   </div>
