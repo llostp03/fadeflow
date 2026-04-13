@@ -550,17 +550,33 @@ function updateUsersSubscriptionByStripeSubscriptionId(subscriptionId, status) {
 }
 
 /**
- * Stripe sends metadata values as strings; test fixtures (e.g. `stripe trigger`) often omit metadata.
- * We also set client_reference_id on session create so the id is still on the session object.
+ * Resolves ClipFlow user id from a Checkout Session (webhook or retrieve).
+ * Order: session.metadata.userId → client_reference_id → payment_intent.metadata.userId (when expanded).
+ * If you see "no metadata" in Stripe for sessions not created by POST /create-checkout-session,
+ * use the in-app Unlock button (Payment Links / manual charges will not include userId).
  */
-function userIdFromCheckoutSession(session) {
+function userIdStringFromCheckoutSession(session) {
   const meta =
     session.metadata && typeof session.metadata.userId === "string"
       ? session.metadata.userId.trim()
       : "";
+  if (meta) {
+    return meta;
+  }
   const ref =
     typeof session.client_reference_id === "string" ? session.client_reference_id.trim() : "";
-  const raw = meta || ref;
+  if (ref) {
+    return ref;
+  }
+  const pi = session.payment_intent;
+  if (pi && typeof pi === "object" && pi.metadata && typeof pi.metadata.userId === "string") {
+    return pi.metadata.userId.trim();
+  }
+  return "";
+}
+
+function userIdFromCheckoutSession(session) {
+  const raw = userIdStringFromCheckoutSession(session);
   return raw === "" ? Number.NaN : Number(raw);
 }
 
@@ -1585,6 +1601,12 @@ app.post("/create-checkout-session", async (req, res) => {
         // Webhook reads this to set users.subscription_status (must match logged-in user).
         userId: String(user.id),
       },
+      /** Duplicated on the Payment Intent so it appears under Payments → Payment details → Metadata in Dashboard. */
+      payment_intent_data: {
+        metadata: {
+          userId: String(user.id),
+        },
+      },
     });
 
     console.log("CHECKOUT SESSION ID:", session.id);
@@ -1626,7 +1648,9 @@ app.post("/confirm-paid-checkout", async (req, res) => {
   try {
     console.log("CONFIRM SESSION ID:", sessionId);
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent"],
+    });
     console.log("STRIPE SESSION METADATA:", session.metadata);
     console.log("RESOLVED USER ID:", session.metadata?.userId);
 
