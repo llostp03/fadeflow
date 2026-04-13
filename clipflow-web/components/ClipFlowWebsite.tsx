@@ -166,6 +166,28 @@ export default function ClipFlowWebsite() {
     }
   }, []);
 
+  /**
+   * If Stripe redirects here with ?session_id=cs_… (same as /success), stash it so confirm runs with /me.
+   * Strips the query from the address bar without reloading.
+   */
+  useLayoutEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const sid = params.get("session_id");
+      if (sid?.startsWith("cs_")) {
+        window.sessionStorage.setItem(CHECKOUT_SESSION_STORAGE_KEY, sid);
+        const path = window.location.pathname + (window.location.hash || "");
+        window.history.replaceState({}, "", path);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  /**
+   * Refetch account — also runs POST /confirm-paid-checkout when a Checkout session id is in sessionStorage
+   * (set by /success or ?session_id=). Without this, users who paid but never hit “Refresh account” stayed on the paywall.
+   */
   const refreshAccount = useCallback(async () => {
     setMeLoading(true);
     try {
@@ -176,11 +198,26 @@ export default function ClipFlowWebsite() {
         setCurrentUser(null);
         return;
       }
+      if (typeof window !== "undefined") {
+        const sessionId = window.sessionStorage.getItem(CHECKOUT_SESSION_STORAGE_KEY);
+        if (sessionId) {
+          try {
+            await confirmPaidCheckout(t, sessionId);
+          } catch {
+            /* Payment may still be settling; webhook may apply; continue to GET /me */
+          }
+        }
+      }
       const me = await getMe(t);
       setMeUser(me);
       setCurrentUser(me);
       setEmail(me.email);
       setName(me.name?.trim() || "ClipFlow Barber");
+      const active =
+        String(me.subscription_status ?? "").trim().toLowerCase() === "active";
+      if (active && typeof window !== "undefined") {
+        window.sessionStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
+      }
     } catch {
       clearStoredToken();
       setMeUser(null);
@@ -191,40 +228,10 @@ export default function ClipFlowWebsite() {
     }
   }, []);
 
-  /** Single GET /me on mount — avoids a race when two parallel loads run after Stripe (stale paywall). */
+  /** Single load on mount — same path as focus/visibility (includes Stripe unlock confirm). */
   useEffect(() => {
-    const saved = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-    if (!saved) {
-      setMeLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setToken(saved);
-
-    void (async () => {
-      try {
-        const user = await getMe(saved);
-        if (cancelled) return;
-        setCurrentUser(user);
-        setMeUser(user);
-        setEmail(user.email);
-        setName(user.name?.trim() || "ClipFlow Barber");
-      } catch {
-        if (cancelled) return;
-        window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-        setToken(null);
-        setCurrentUser(null);
-        setMeUser(null);
-      } finally {
-        if (!cancelled) setMeLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void refreshAccount();
+  }, [refreshAccount]);
 
   useEffect(() => {
     const onFocus = () => void refreshAccount();
@@ -234,9 +241,9 @@ export default function ClipFlowWebsite() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === AUTH_TOKEN_STORAGE_KEY || e.key === null) void refreshAccount();
     };
-    /** Stripe Checkout returns via full navigation; bfcache can restore old React state — refetch /me. */
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) void refreshAccount();
+    /** After Stripe redirect or bfcache, refetch /me and run confirm-paid when session id is present. */
+    const onPageShow = () => {
+      void refreshAccount();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
@@ -327,35 +334,11 @@ export default function ClipFlowWebsite() {
   };
 
   const handleRefreshAccount = async () => {
-    if (!token) return;
-
+    if (!getStoredToken()) return;
     setError("");
     setMessage("");
-
     try {
-      if (typeof window !== "undefined") {
-        const sessionId = window.sessionStorage.getItem(CHECKOUT_SESSION_STORAGE_KEY);
-        if (sessionId) {
-          try {
-            await confirmPaidCheckout(token, sessionId);
-          } catch {
-            // Webhook may still apply later; continue with GET /me
-          }
-        }
-      }
-
-      const me = await getMe(token);
-      setCurrentUser(me);
-      setMeUser(me);
-      setEmail(me.email);
-      setName(me.name?.trim() || "ClipFlow Barber");
-      const active =
-        String(me.subscription_status ?? "")
-          .trim()
-          .toLowerCase() === "active";
-      if (active && typeof window !== "undefined") {
-        window.sessionStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
-      }
+      await refreshAccount();
       setMessage("Account refreshed.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to refresh account.");
