@@ -162,19 +162,19 @@ export default function BarberStudioSection({
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Calendar preview failed.");
+      setError(e instanceof Error ? e.message : "Could not load calendar events.");
     } finally {
       setCalendarProbing(false);
     }
   };
 
-  const sendSmsTest = async () => {
+  const sendSms = async () => {
     if (!token || !subscriptionActive || !smsTo.trim()) return;
     setSmsSending(true);
     setError(null);
     try {
       await postStudioSmsTest(token, { toE164: smsTo.trim() });
-      setMessage("Test SMS sent via Twilio.");
+      setMessage("Message sent via Twilio.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "SMS failed.");
     } finally {
@@ -556,7 +556,7 @@ export default function BarberStudioSection({
               <Input
                 value={smsTo}
                 onChange={(e) => setSmsTo(e.target.value)}
-                placeholder="Test SMS to (E.164)"
+                placeholder="Recipient (E.164)"
                 className="max-w-xs border-white/10 bg-black/40 text-white"
                 disabled={!subscriptionActive}
               />
@@ -564,10 +564,10 @@ export default function BarberStudioSection({
                 type="button"
                 variant="outline"
                 className="border-white/20 text-white hover:bg-white/10"
-                onClick={() => void sendSmsTest()}
+                onClick={() => void sendSms()}
                 disabled={!subscriptionActive || smsSending || !smsTo.trim()}
               >
-                {smsSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send test SMS"}
+                {smsSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send SMS"}
               </Button>
             </div>
           </CardContent>
@@ -581,7 +581,7 @@ export default function BarberStudioSection({
             </CardTitle>
             <CardDescription className="text-zinc-400">
               Paste a public <strong className="text-zinc-300">https</strong> iCal or Google Calendar secret address.
-              Save, then preview — ClipFlow reads a few upcoming events for AI context.
+              Save, then load upcoming events — ClipFlow uses them for AI context.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -608,7 +608,7 @@ export default function BarberStudioSection({
                   Loading feed…
                 </>
               ) : (
-                "Preview calendar feed"
+                "Load upcoming events"
               )}
             </Button>
             {calendarPreview && calendarPreview.length > 0 ? (

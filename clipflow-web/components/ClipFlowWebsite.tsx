@@ -72,9 +72,9 @@ const features = [
 
 const steps = [
   "Create your ClipFlow account",
-  "Sign in and explore the app",
+  "Sign in to your barber profile",
   "Pay once to unlock ClipFlow Pro",
-  "Unlock bookings, payments, and growth tools",
+  "Use your dashboard, AI & pricing, and booking tools",
 ];
 
 const testimonials = [
@@ -93,19 +93,6 @@ const testimonials = [
     quote:
       "It feels like a real system, not a random booking link. That made people trust me faster.",
   },
-];
-
-/** Quick manual test values for signup / signin fields (not real accounts—sign up once against your API if needed). */
-const QUICK_TEST_AUTH = {
-  name: "QA Test User",
-  email: "clipflow.qa.local@example.com",
-  password: "ClipFlowLocal2026",
-} as const;
-
-const appointments = [
-  { time: "9:00 AM", client: "Jordan W.", service: "Fade + Beard", status: "Confirmed" },
-  { time: "11:30 AM", client: "Chris P.", service: "Premium Cut", status: "Paid" },
-  { time: "2:00 PM", client: "Malik T.", service: "House Call", status: "Pending" },
 ];
 
 function SectionTitle({
@@ -138,10 +125,10 @@ export default function ClipFlowWebsite() {
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
   const [meUser, setMeUser] = useState<AuthUser | null>(null);
   const [meLoading, setMeLoading] = useState(true);
-  const [email, setEmail] = useState<string>(QUICK_TEST_AUTH.email);
-  const [name, setName] = useState<string>(QUICK_TEST_AUTH.name);
-  const [password, setPassword] = useState<string>(QUICK_TEST_AUTH.password);
-  const [confirmPassword, setConfirmPassword] = useState<string>(QUICK_TEST_AUTH.password);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState<"signup" | "signin" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -351,10 +338,10 @@ export default function ClipFlowWebsite() {
     setCurrentUser(null);
     setMeUser(null);
     setDashboardHint(null);
-    setEmail(QUICK_TEST_AUTH.email);
-    setName(QUICK_TEST_AUTH.name);
-    setPassword(QUICK_TEST_AUTH.password);
-    setConfirmPassword(QUICK_TEST_AUTH.password);
+    setEmail("");
+    setName("");
+    setPassword("");
+    setConfirmPassword("");
     setMessage("Signed out.");
     setError("");
   };
@@ -620,12 +607,12 @@ export default function ClipFlowWebsite() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-2xl font-bold">
-                      {subscriptionActive ? "Your barber dashboard" : "ClipFlow Pro preview"}
+                      {subscriptionActive ? "Your barber dashboard" : "Dashboard overview"}
                     </CardTitle>
                     <CardDescription className="text-zinc-300">
                       {subscriptionActive
-                        ? "Today, revenue, and upcoming appointments — full clarity, no demo blur."
-                        : "What barbers see after login and unlocking Pro"}
+                        ? "Today, revenue, and appointments — your workspace at a glance."
+                        : "Sign in and unlock ClipFlow Pro to manage your business from one place."}
                     </CardDescription>
                   </div>
                   <Badge
@@ -663,13 +650,13 @@ export default function ClipFlowWebsite() {
                       <Card className="rounded-2xl border-white/10 bg-[#0f1118]">
                         <CardContent className="p-4">
                           <div className="text-xs text-zinc-400">Today</div>
-                          <div className="mt-2 text-2xl font-bold">6</div>
+                          <div className="mt-2 text-2xl font-bold">0</div>
                         </CardContent>
                       </Card>
                       <Card className="rounded-2xl border-white/10 bg-[#0f1118]">
                         <CardContent className="p-4">
                           <div className="text-xs text-zinc-400">Revenue</div>
-                          <div className="mt-2 text-2xl font-bold">$420</div>
+                          <div className="mt-2 text-2xl font-bold">$0</div>
                         </CardContent>
                       </Card>
                       <Card className="rounded-2xl border-white/10 bg-[#0f1118]">
@@ -681,16 +668,12 @@ export default function ClipFlowWebsite() {
                     </div>
                     {subscriptionActive ? (
                       <p className="text-xs leading-relaxed text-zinc-500">
-                        The stats and list above are <strong className="text-zinc-400">sample content</strong> on this
-                        marketing page. Pro is active when the badge says Active — scroll to{" "}
-                        <a href="#dashboard" className="text-yellow-300/90 underline-offset-2 hover:underline">
-                          Dashboard
-                        </a>{" "}
-                        and{" "}
+                        Totals start at zero until you connect payouts and booking data. Configure services and calendar
+                        in{" "}
                         <a href="#studio" className="text-yellow-300/90 underline-offset-2 hover:underline">
                           AI &amp; pricing
-                        </a>{" "}
-                        for your real tools.
+                        </a>
+                        .
                       </p>
                     ) : null}
                     <Card className="rounded-2xl border-white/10 bg-[#0b0e15]">
@@ -699,22 +682,19 @@ export default function ClipFlowWebsite() {
                           <div className="font-semibold">Upcoming appointments</div>
                           <Clock3 className="h-4 w-4 text-zinc-400" />
                         </div>
-                        {appointments.map((item) => (
-                          <div
-                            key={`${item.time}-${item.client}`}
-                            className="flex items-center justify-between rounded-xl border border-white/8 bg-white/5 p-3"
-                          >
-                            <div>
-                              <div className="font-medium">{item.client}</div>
-                              <div className="text-sm text-zinc-400">
-                                {item.time} · {item.service}
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="border-white/15 text-zinc-200">
-                              {item.status}
-                            </Badge>
-                          </div>
-                        ))}
+                        {subscriptionActive ? (
+                          <p className="rounded-xl border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-zinc-400">
+                            No upcoming appointments yet. Add your calendar in{" "}
+                            <a href="#studio" className="font-medium text-yellow-300/90 underline-offset-2 hover:underline">
+                              AI &amp; pricing
+                            </a>{" "}
+                            so clients and reminders stay in sync.
+                          </p>
+                        ) : (
+                          <p className="rounded-xl border border-white/8 bg-white/5 px-4 py-8 text-center text-sm text-zinc-500">
+                            Unlock ClipFlow Pro to manage your schedule from this dashboard.
+                          </p>
+                        )}
                       </CardContent>
                     </Card>
                   </div>
@@ -750,7 +730,7 @@ export default function ClipFlowWebsite() {
           <SectionTitle
             badge="Features"
             title="Everything the ClipFlow website needs"
-            text="This first version combines your marketing site, create-account flow, sign-in path, one-time Pro unlock story, and a barber dashboard preview in one place."
+            text="Marketing, accounts, secure checkout, Pro unlock, barber dashboard, and AI-powered pricing — built for real shops."
           />
           <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {features.map((feature) => {
@@ -795,7 +775,7 @@ export default function ClipFlowWebsite() {
                         {index === 0 &&
                           "Start with a simple, self-serve signup that feels fast and premium."}
                         {index === 1 &&
-                          "Signed-in barbers can access their account and see whether Pro is unlocked."}
+                          "Signed-in barbers see their profile, subscription status, and full dashboard access."}
                         {index === 2 &&
                           "One-time Stripe checkout is the unlock moment for the full product."}
                         {index === 3 &&
@@ -835,7 +815,7 @@ export default function ClipFlowWebsite() {
                     "Premium booking flow",
                     "Payments and deposits",
                     "Barber sign-in and account access",
-                    "Pro unlock after one-time Stripe checkout",
+                    "One-time secure checkout to unlock Pro",
                     "Dashboard view",
                     "Branded client-facing experience",
                   ].map((item) => (
@@ -905,9 +885,10 @@ export default function ClipFlowWebsite() {
                   <p>It feels like a real SaaS product, not a manual email flow.</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-[#0c0f16] p-4">
-                  <div className="text-sm text-zinc-400">Unlock rule</div>
-                  <div className="mt-2 text-base font-semibold">
-                    one-time checkout completes → subscription_status === &apos;active&apos;
+                  <div className="text-sm text-zinc-400">After checkout</div>
+                  <div className="mt-2 text-base font-semibold leading-snug text-zinc-100">
+                    Your ClipFlow Pro access turns on as soon as payment completes. Return to this site and your
+                    account updates automatically.
                   </div>
                 </div>
               </CardContent>
@@ -1076,7 +1057,7 @@ export default function ClipFlowWebsite() {
                   {[
                     "Anyone can create an account.",
                     "Signed-in barbers who have not unlocked Pro yet see the paywall.",
-                    "One-time Stripe checkout + webhook sets subscription_status to active.",
+                    "Complete one-time Stripe checkout; your Pro access activates right after payment.",
                     "Once active, the main dashboard unlocks.",
                   ].map((line) => (
                     <div
@@ -1098,13 +1079,13 @@ export default function ClipFlowWebsite() {
             <SectionTitle
               badge="Dashboard"
               title="Your barber workspace"
-              text="Full stats, today’s schedule, and quick actions — everything stays sharp and interactive on ClipFlow Pro."
+              text="Stats, schedule, and quick actions — keep everything in one place on ClipFlow Pro."
             />
           ) : (
             <SectionTitle
               badge="Dashboard"
-              title="A barber dashboard that feels premium"
-              text="After you unlock Pro, this becomes your full workspace: appointments, revenue, and tools in one place."
+              title="Your command center"
+              text="After you unlock Pro, your dashboard, AI & pricing, and client tools are all available here."
             />
           )}
           <div className="mt-12 grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
@@ -1181,9 +1162,9 @@ export default function ClipFlowWebsite() {
                 >
                   <div className="grid gap-4 md:grid-cols-3">
                     {[
-                      { label: "This week", value: "18 bookings" },
-                      { label: "Collected", value: "$1,280" },
-                      { label: "Repeat rate", value: "64%" },
+                      { label: "This week", value: "0 bookings" },
+                      { label: "Collected", value: "$0" },
+                      { label: "Repeat rate", value: "—" },
                     ].map((item) => (
                       <Card key={item.label} className="rounded-2xl border-white/10 bg-[#0d1017]">
                         <CardContent className="p-5">
@@ -1205,28 +1186,26 @@ export default function ClipFlowWebsite() {
                           type="button"
                           onClick={() =>
                             setDashboardHint(
-                              "Manage appointments — wire this to your booking admin or calendar.",
+                              "Connect your booking calendar in AI & pricing to manage appointments from one place.",
                             )
                           }
                         >
                           Manage
                         </Button>
                       </div>
-                      {appointments.map((item) => (
-                        <div
-                          key={`dash-${item.time}-${item.client}`}
-                          className="flex flex-col gap-2 border-t border-white/10 pt-4 first:border-0 first:pt-0 md:flex-row md:items-center md:justify-between"
-                        >
-                          <div>
-                            <div className="font-medium">{item.client}</div>
-                            <div className="text-sm text-zinc-400">{item.service}</div>
-                          </div>
-                          <div className="text-sm text-zinc-300">{item.time}</div>
-                          <Badge variant="outline" className="w-fit border-white/15">
-                            {item.status}
-                          </Badge>
-                        </div>
-                      ))}
+                      {subscriptionActive ? (
+                        <p className="rounded-xl border border-white/10 bg-[#0b0e15] px-4 py-8 text-center text-sm text-zinc-400">
+                          No appointments listed yet. Sync your calendar from{" "}
+                          <a href="#studio" className="font-medium text-yellow-300/90 underline-offset-2 hover:underline">
+                            AI &amp; pricing
+                          </a>{" "}
+                          to bring bookings into view.
+                        </p>
+                      ) : (
+                        <p className="rounded-xl border border-white/10 bg-[#0b0e15] px-4 py-8 text-center text-sm text-zinc-500">
+                          Unlock Pro to manage today&apos;s appointments here.
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
@@ -1256,9 +1235,8 @@ export default function ClipFlowWebsite() {
                     <Crown className="h-10 w-10 text-yellow-400" />
                     <p className="text-lg font-semibold text-white">ClipFlow Pro required</p>
                     <p className="max-w-sm text-sm text-zinc-300">
-                      ClipFlow Pro is not unlocked yet. Complete the one-time payment in Stripe, then return here and click{" "}
-                      <strong className="text-white">Refresh account</strong> after the webhook updates
-                      your status.
+                      ClipFlow Pro is not unlocked yet. Complete the one-time payment, then return here. If your status
+                      does not update right away, tap <strong className="text-white">Refresh account</strong>.
                     </p>
                     <Button
                       type="button"
@@ -1292,7 +1270,7 @@ export default function ClipFlowWebsite() {
                       disabled={!subscriptionActive}
                       className="h-12 justify-between rounded-2xl bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-50"
                       onClick={() =>
-                        setDashboardHint("Open booking page — set your public booking URL in the app.")
+                        setDashboardHint("Add your public booking link in studio settings when you offer online booking.")
                       }
                     >
                       Open booking page <ArrowRight className="h-4 w-4" />
@@ -1303,7 +1281,7 @@ export default function ClipFlowWebsite() {
                       variant="outline"
                       className="h-12 justify-between rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10 disabled:opacity-50"
                       onClick={() =>
-                        setDashboardHint("View payouts — connect Stripe payouts or your ledger here.")
+                        setDashboardHint("Payouts run through your Stripe account — open the Stripe Dashboard for transfers and balance.")
                       }
                     >
                       View payouts <ArrowRight className="h-4 w-4" />
@@ -1314,7 +1292,7 @@ export default function ClipFlowWebsite() {
                       variant="outline"
                       className="h-12 justify-between rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10 disabled:opacity-50"
                       onClick={() =>
-                        setDashboardHint("Edit services — link to your services and pricing screen.")
+                        setDashboardHint("Edit services and prices in the AI & pricing section below.")
                       }
                     >
                       Edit services <ArrowRight className="h-4 w-4" />
@@ -1331,18 +1309,18 @@ export default function ClipFlowWebsite() {
               >
                 <CardContent className="space-y-4 p-6">
                   <h4 className="text-lg font-bold">
-                    {subscriptionActive ? "Barber tools (live)" : "Pro access preview"}
+                    {subscriptionActive ? "Barber tools" : "Before you unlock"}
                   </h4>
                   <p className="text-sm leading-7 text-zinc-300">
                     {subscriptionActive ? (
                       <>
-                        ClipFlow Pro is active. Booking page, payouts, and services below are enabled — wire each action
-                        to your live admin or app routes when you connect them.
+                        ClipFlow Pro is active. Use quick actions for booking, payouts, and services — everything below
+                        reflects your signed-in account.
                       </>
                     ) : (
                       <>
-                        After you sign in, this page reads <code className="text-yellow-200/90">GET /me</code> and uses{" "}
-                        <code className="text-yellow-200/90">subscription_status</code> to unlock the full dashboard.
+                        Create an account, sign in, and complete the one-time Pro payment. Your dashboard and AI tools
+                        unlock as soon as your payment is confirmed.
                       </>
                     )}
                   </p>
@@ -1368,8 +1346,8 @@ export default function ClipFlowWebsite() {
         <section className="mx-auto max-w-7xl px-4 py-20 md:px-8">
           <SectionTitle
             badge="Social proof"
-            title="Make ClipFlow feel trusted fast"
-            text="A strong first impression matters. These cards give you a place to add real barber wins once users unlock Pro and get results."
+            title="Trusted by busy barbers"
+            text="A strong first impression matters. Here is how ClipFlow reads for shops that want a premium client experience."
           />
           <div className="mt-12 grid gap-5 md:grid-cols-3">
             {testimonials.map((item) => (

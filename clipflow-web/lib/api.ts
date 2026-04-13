@@ -286,7 +286,7 @@ export async function getStudioCalendarPreview(token: string): Promise<{
   });
   const data = await parseJsonSafe(res);
   if (!res.ok) {
-    throw new Error(detailFromApiResponse(data, res, "Unable to preview calendar."));
+    throw new Error(detailFromApiResponse(data, res, "Unable to load calendar events."));
   }
   return data as { ok: boolean; detail?: string; events: CalendarPreviewEvent[] };
 }
