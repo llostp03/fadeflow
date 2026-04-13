@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { createCheckoutSession } from "@/lib/api";
 import {
+  createCheckoutSession,
+  getStudio,
   AUTH_TOKEN_STORAGE_KEY,
   CHECKOUT_SESSION_STORAGE_KEY,
   clearStoredToken,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import BarberStudioSection from "@/components/BarberStudioSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CheckCircle2,
@@ -41,6 +43,7 @@ import {
   Crown,
   Star,
   Clock3,
+  Loader2,
   Sparkles,
 } from "lucide-react";
 
@@ -146,6 +149,22 @@ export default function ClipFlowWebsite() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [dashboardHint, setDashboardHint] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [studioPublishedBlurb, setStudioPublishedBlurb] = useState("");
+  const [studioBlurbLoading, setStudioBlurbLoading] = useState(false);
+
+  const handlePublishedBlurbChange = useCallback((blurb: string) => {
+    setStudioPublishedBlurb(blurb);
+  }, []);
+
+  /** Read token before paint so overlays and loading state match stored session (avoids “sign in” flash). */
+  useLayoutEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+      if (saved) setToken(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const refreshAccount = useCallback(async () => {
     setMeLoading(true);
@@ -215,13 +234,19 @@ export default function ClipFlowWebsite() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === AUTH_TOKEN_STORAGE_KEY || e.key === null) void refreshAccount();
     };
+    /** Stripe Checkout returns via full navigation; bfcache can restore old React state — refetch /me. */
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void refreshAccount();
+    };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("storage", onStorage);
+    window.addEventListener("pageshow", onPageShow);
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, [refreshAccount]);
 
@@ -357,6 +382,33 @@ export default function ClipFlowWebsite() {
   const sub = String(signedInUser?.subscription_status ?? "").trim().toLowerCase();
   const subscriptionActive = sub === "active";
 
+  /** Load AI-published blurb for Pro barbers so the hero and dashboard show it without scrolling to #studio. */
+  useEffect(() => {
+    if (!token || !subscriptionActive || meLoading) {
+      if (!token || !subscriptionActive) {
+        setStudioPublishedBlurb("");
+        setStudioBlurbLoading(false);
+      }
+      return;
+    }
+    let cancelled = false;
+    setStudioBlurbLoading(true);
+    void getStudio(token)
+      .then((s) => {
+        if (cancelled) return;
+        setStudioPublishedBlurb(s.publishedBlurb || "");
+      })
+      .catch(() => {
+        if (!cancelled) setStudioPublishedBlurb("");
+      })
+      .finally(() => {
+        if (!cancelled) setStudioBlurbLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, subscriptionActive, meLoading]);
+
   const handleUpgrade = async () => {
     if (checkoutLoading) return;
 
@@ -416,6 +468,9 @@ export default function ClipFlowWebsite() {
             <a href="#dashboard" className="transition-colors hover:text-white">
               Dashboard
             </a>
+            <a href="#studio" className="transition-colors hover:text-white">
+              AI &amp; pricing
+            </a>
           </nav>
           <div className="flex items-center gap-2">
             {isLoggedIn && (
@@ -428,24 +483,28 @@ export default function ClipFlowWebsite() {
                 Sign out
               </Button>
             )}
-            <Link
-              href="/login"
-              className={cn(
-                buttonVariants({ variant: "outline" }),
-                "border-white/15 bg-transparent text-white hover:bg-white/10",
-              )}
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className={cn(
-                buttonVariants({ variant: "default" }),
-                "bg-yellow-400 text-black hover:bg-yellow-300 font-semibold",
-              )}
-            >
-              Create account
-            </Link>
+            {!isLoggedIn && (
+              <>
+                <Link
+                  href="/login"
+                  className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "border-white/15 bg-transparent text-white hover:bg-white/10",
+                  )}
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/signup"
+                  className={cn(
+                    buttonVariants({ variant: "default" }),
+                    "bg-yellow-400 text-black hover:bg-yellow-300 font-semibold",
+                  )}
+                >
+                  Create account
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -470,6 +529,35 @@ export default function ClipFlowWebsite() {
                 Show off your brand, let barbers create accounts, pay once to unlock ClipFlow Pro, and open
                 a premium dashboard for bookings, payments, and growth.
               </p>
+              {subscriptionActive && studioBlurbLoading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading your live page copy…
+                </div>
+              ) : null}
+              {subscriptionActive && studioPublishedBlurb ? (
+                <blockquote className="max-w-xl rounded-2xl border border-green-400/25 bg-green-500/10 px-5 py-4 text-left shadow-lg shadow-green-500/5">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-300/95">
+                    <Sparkles className="h-4 w-4" />
+                    Your live page copy
+                  </div>
+                  <p className="text-base leading-relaxed text-zinc-100 md:text-lg">{studioPublishedBlurb}</p>
+                  <a
+                    href="#studio"
+                    className="mt-3 inline-block text-sm font-medium text-yellow-300/90 underline-offset-4 hover:underline"
+                  >
+                    Edit menu or sync again in AI &amp; pricing
+                  </a>
+                </blockquote>
+              ) : subscriptionActive && !studioBlurbLoading ? (
+                <p className="max-w-xl text-sm text-zinc-500">
+                  Publish AI copy from{" "}
+                  <a href="#studio" className="font-medium text-yellow-300/90 underline-offset-4 hover:underline">
+                    AI &amp; pricing
+                  </a>{" "}
+                  to show your menu-driven blurb here.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -578,6 +666,16 @@ export default function ClipFlowWebsite() {
                       !subscriptionActive && "opacity-45",
                     )}
                   >
+                    {subscriptionActive && studioPublishedBlurb ? (
+                      <div className="rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-green-300/90">
+                          AI-published blurb
+                        </div>
+                        <p className="mt-1 line-clamp-4 text-sm leading-relaxed text-zinc-200">
+                          {studioPublishedBlurb}
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="grid grid-cols-3 gap-3">
                       <Card className="rounded-2xl border-white/10 bg-[#0f1118]">
                         <CardContent className="p-4">
@@ -623,14 +721,14 @@ export default function ClipFlowWebsite() {
                       </CardContent>
                     </Card>
                   </div>
-                  {!isLoggedIn && (
+                  {!isLoggedIn && !meLoading && (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 p-4 text-center">
                       <p className="max-w-[220px] rounded-full border border-white/15 bg-[#0b0e15]/90 px-4 py-2 text-sm text-zinc-200">
                         Sign in to sync your Pro unlock status
                       </p>
                     </div>
                   )}
-                {isLoggedIn && !subscriptionActive && (
+                {isLoggedIn && !subscriptionActive && !meLoading && (
                   <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 p-4 text-center">
                     <div className="flex max-w-[280px] flex-col items-center gap-3 rounded-2xl border border-yellow-400/25 bg-[#0b0e15]/95 px-4 py-4 text-sm text-yellow-100">
                       <p>One-time access — unlock ClipFlow Pro to use the full dashboard.</p>
@@ -1136,7 +1234,7 @@ export default function ClipFlowWebsite() {
                   </Card>
                 </div>
 
-                {!isLoggedIn && (
+                {!isLoggedIn && !meLoading && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-[32px] bg-[#05060b]/88 p-6 text-center">
                     <p className="text-lg font-semibold text-white">Sign in to load your dashboard</p>
                     <Link
@@ -1150,7 +1248,12 @@ export default function ClipFlowWebsite() {
                     </Link>
                   </div>
                 )}
-                {isLoggedIn && !subscriptionActive && (
+                {meLoading && token && (
+                  <div className="absolute inset-0 z-[11] flex items-center justify-center rounded-[32px] bg-[#05060b]/75 p-6">
+                    <p className="text-sm font-medium text-zinc-300">Loading your account…</p>
+                  </div>
+                )}
+                {isLoggedIn && !subscriptionActive && !meLoading && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-[32px] bg-[#05060b]/88 p-6 text-center">
                     <Crown className="h-10 w-10 text-yellow-400" />
                     <p className="text-lg font-semibold text-white">ClipFlow Pro required</p>
@@ -1255,6 +1358,15 @@ export default function ClipFlowWebsite() {
           </div>
         </section>
 
+        <BarberStudioSection
+          token={token}
+          subscriptionActive={subscriptionActive}
+          barberName={signedInUser?.name?.trim() || ""}
+          onUpgrade={() => void handleUpgrade()}
+          checkoutLoading={checkoutLoading}
+          onPublishedBlurbChange={handlePublishedBlurbChange}
+        />
+
         <section className="mx-auto max-w-7xl px-4 py-20 md:px-8">
           <SectionTitle
             badge="Social proof"
@@ -1299,6 +1411,9 @@ export default function ClipFlowWebsite() {
             </a>
             <a href="#dashboard" className="hover:text-white">
               Dashboard
+            </a>
+            <a href="#studio" className="hover:text-white">
+              AI &amp; pricing
             </a>
           </div>
         </div>

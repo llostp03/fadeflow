@@ -9,6 +9,7 @@ const Database = require("better-sqlite3");
 const dotenv = require("dotenv");
 const express = require("express");
 const Stripe = require("stripe");
+const twilioPkg = require("twilio");
 
 dotenv.config();
 
@@ -109,6 +110,316 @@ db.exec(`
 `);
 
 ensureUserSubscriptionColumns();
+
+/** Barber-owned pricing + AI assistant flags + published marketing blurb (ClipFlow Pro). */
+function ensureBarberStudioTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS barber_studio (
+      user_id INTEGER PRIMARY KEY,
+      pricing_json TEXT NOT NULL DEFAULT '[]',
+      ai_json TEXT NOT NULL DEFAULT '{}',
+      published_blurb TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+  `);
+}
+
+ensureBarberStudioTable();
+
+function ensureBarberStudioIntegrationsColumn() {
+  const cols = db.prepare("PRAGMA table_info(barber_studio)").all();
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("integrations_json")) {
+    db.exec("ALTER TABLE barber_studio ADD COLUMN integrations_json TEXT NOT NULL DEFAULT '{}'");
+  }
+}
+
+ensureBarberStudioIntegrationsColumn();
+
+function subscriptionIsActiveForUserId(userId) {
+  const row = db
+    .prepare(`SELECT COALESCE(subscription_status, '') AS s FROM users WHERE id = ?`)
+    .get(userId);
+  if (!row) return false;
+  return String(row.s ?? "")
+    .trim()
+    .toLowerCase() === "active";
+}
+
+function parseJsonSafe(raw, fallback) {
+  if (typeof raw !== "string" || raw === "") return fallback;
+  try {
+    const v = JSON.parse(raw);
+    return v;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizePricingInput(input) {
+  if (!Array.isArray(input)) return [];
+  const out = [];
+  for (const item of input.slice(0, 24)) {
+    if (!item || typeof item !== "object") continue;
+    const name = typeof item.name === "string" ? item.name.trim().slice(0, 80) : "";
+    const price = Number(item.price);
+    if (!name || !Number.isFinite(price) || price < 0 || price > 5000) continue;
+    const durationMins =
+      item.durationMins != null && Number.isFinite(Number(item.durationMins))
+        ? Math.min(480, Math.max(5, Math.round(Number(item.durationMins))))
+        : 30;
+    out.push({
+      id: typeof item.id === "string" ? item.id.slice(0, 40) : `svc_${out.length + 1}`,
+      name,
+      price: Math.round(price * 100) / 100,
+      durationMins,
+    });
+  }
+  return out;
+}
+
+function normalizeAiInput(input) {
+  const base = {
+    answerClientCalls: true,
+    manageBookings: true,
+    clientCallHours: "Mon–Sat 9a–7p",
+    smsReminder: true,
+  };
+  if (!input || typeof input !== "object") return base;
+  return {
+    answerClientCalls: Boolean(input.answerClientCalls),
+    manageBookings: Boolean(input.manageBookings),
+    clientCallHours:
+      typeof input.clientCallHours === "string"
+        ? input.clientCallHours.trim().slice(0, 120)
+        : base.clientCallHours,
+    smsReminder: input.smsReminder !== false,
+  };
+}
+
+/** Twilio voice number, iCal URL, shop display name + client-facing phones (ClipFlow Pro). */
+function normalizeIntegrationsInput(input) {
+  const base = {
+    barbershopName: "",
+    shopPhones: [],
+    twilioVoiceNumberE164: "",
+    calendarIcsUrl: "",
+  };
+  if (!input || typeof input !== "object") return base;
+  const shopPhones = [];
+  if (Array.isArray(input.shopPhones)) {
+    for (const p of input.shopPhones.slice(0, 4)) {
+      if (typeof p === "string") {
+        const t = p.trim().slice(0, 24);
+        if (t) shopPhones.push(t);
+      }
+    }
+  }
+  return {
+    barbershopName:
+      typeof input.barbershopName === "string" ? input.barbershopName.trim().slice(0, 100) : "",
+    shopPhones,
+    twilioVoiceNumberE164:
+      typeof input.twilioVoiceNumberE164 === "string"
+        ? input.twilioVoiceNumberE164.trim().slice(0, 32)
+        : "",
+    calendarIcsUrl:
+      typeof input.calendarIcsUrl === "string" ? input.calendarIcsUrl.trim().slice(0, 800) : "",
+  };
+}
+
+function normalizePhoneKey(s) {
+  const d = String(s || "").replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("1")) {
+    return d.slice(1);
+  }
+  if (d.length === 10) {
+    return d;
+  }
+  return d;
+}
+
+function findUserIdByTwilioTo(toField) {
+  const want = normalizePhoneKey(toField);
+  if (!want) {
+    return null;
+  }
+  const rows = db.prepare(`SELECT user_id, integrations_json FROM barber_studio`).all();
+  for (const row of rows) {
+    const integ = normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {}));
+    const primary = integ.twilioVoiceNumberE164;
+    if (primary && normalizePhoneKey(primary) === want) {
+      return row.user_id;
+    }
+    for (const p of integ.shopPhones) {
+      if (p && normalizePhoneKey(p) === want) {
+        return row.user_id;
+      }
+    }
+  }
+  return null;
+}
+
+function validateTwilioWebhookRequest(req) {
+  const token =
+    typeof process.env.TWILIO_AUTH_TOKEN === "string" ? process.env.TWILIO_AUTH_TOKEN.trim() : "";
+  if (!token) {
+    console.warn("[twilio] TWILIO_AUTH_TOKEN not set — rejecting webhook");
+    return false;
+  }
+  const sig = req.headers["x-twilio-signature"];
+  if (typeof sig !== "string") {
+    return false;
+  }
+  const publicBase =
+    typeof process.env.PUBLIC_API_URL === "string" && process.env.PUBLIC_API_URL.trim()
+      ? process.env.PUBLIC_API_URL.trim().replace(/\/+$/, "")
+      : "";
+  const pathOnly = req.originalUrl || req.url || "";
+  const path = pathOnly.split("?")[0];
+  const proto =
+    (req.headers["x-forwarded-proto"] && String(req.headers["x-forwarded-proto"]).split(",")[0].trim()) ||
+    req.protocol ||
+    "https";
+  const host = req.headers.host || "";
+  const url = publicBase ? `${publicBase}${path}` : `${proto}://${host}${path}`;
+  return twilioPkg.validateRequest(token, sig, url, req.body);
+}
+
+function buildVoiceTwiML(userId) {
+  const VoiceResponse = twilioPkg.twiml.VoiceResponse;
+  const vr = new VoiceResponse();
+
+  const u = db.prepare(`SELECT name FROM users WHERE id = ?`).get(userId);
+  const accountName = u && typeof u.name === "string" && u.name.trim() ? u.name.trim() : "the shop";
+
+  const row = db.prepare(`SELECT * FROM barber_studio WHERE user_id = ?`).get(userId);
+  const integ = row ? normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {})) : normalizeIntegrationsInput(null);
+  const shopLabel = integ.barbershopName || accountName;
+  const pricing = row ? parseJsonSafe(row.pricing_json, []) : [];
+  const blurb = row && typeof row.published_blurb === "string" ? row.published_blurb.trim() : "";
+
+  const menuBits = [];
+  if (Array.isArray(pricing)) {
+    for (const p of pricing.slice(0, 5)) {
+      if (p && p.name) {
+        const price = Number(p.price);
+        const dollars = Number.isFinite(price) ? Math.round(price) : 0;
+        menuBits.push(`${p.name}, ${dollars} dollars`);
+      }
+    }
+  }
+  const menuLine = menuBits.length ? ` Services include: ${menuBits.join(". ")}.` : "";
+
+  const phoneHint =
+    integ.shopPhones.length > 0
+      ? ` You can reach ${shopLabel} at ${integ.shopPhones.join(", ")}.`
+      : "";
+
+  const blurbShort = blurb.length > 280 ? `${blurb.slice(0, 277)}...` : blurb;
+  const intro = blurbShort
+    ? `Thanks for calling ${shopLabel}. ${blurbShort}`
+    : `Thanks for calling ${shopLabel}. ClipFlow AI is handling this line for ${accountName}.${menuLine}${phoneHint}`;
+
+  const full = blurbShort ? `${intro}${menuLine}${phoneHint} Goodbye.` : `${intro} Goodbye.`;
+  vr.say({ voice: "Polly.Joanna-Neural" }, full);
+  vr.hangup();
+  return vr.toString();
+}
+
+function buildSmsTwiML(userId) {
+  const MessagingResponse = twilioPkg.twiml.MessagingResponse;
+  const mr = new MessagingResponse();
+
+  const u = db.prepare(`SELECT name FROM users WHERE id = ?`).get(userId);
+  const accountName = u && typeof u.name === "string" && u.name.trim() ? u.name.trim() : "us";
+  const row = db.prepare(`SELECT integrations_json FROM barber_studio WHERE user_id = ?`).get(userId);
+  const integ = row
+    ? normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {}))
+    : normalizeIntegrationsInput(null);
+  const shopLabel = integ.barbershopName || accountName;
+  const phoneBit =
+    integ.shopPhones.length > 0 ? ` Call ${shopLabel} at ${integ.shopPhones[0]}.` : "";
+
+  mr.message(
+    `Thanks for texting ${shopLabel}. ClipFlow AI manages this thread for ${accountName}.${phoneBit} Bookings follow your menu and hours.`
+  );
+  return mr.toString();
+}
+
+function parseIcsEventsRough(icsText, limit) {
+  const events = [];
+  const parts = icsText.split(/BEGIN:VEVENT/gi);
+  for (let i = 1; i < parts.length && events.length < limit; i++) {
+    const block = parts[i];
+    const sum = block.match(/SUMMARY[^:]*:([^\r\n]+)/i);
+    const dt = block.match(/DTSTART[^:]*:([^\r\n]+)/i);
+    if (sum && dt) {
+      events.push({
+        summary: sum[1]
+          .trim()
+          .replace(/\\,/g, ",")
+          .replace(/\\n/g, " ")
+          .replace(/\\\\/g, "\\"),
+        rawStart: dt[1].trim(),
+      });
+    }
+  }
+  return events;
+}
+
+async function generatePublishedBlurbFromStudio(barberName, pricing, integrations) {
+  const integ = integrations && typeof integrations === "object" ? integrations : normalizeIntegrationsInput(null);
+  const shopTitle = integ.barbershopName || barberName;
+  const phoneLine =
+    integ.shopPhones && integ.shopPhones.length > 0
+      ? ` Shop phone numbers: ${integ.shopPhones.join(", ")}.`
+      : "";
+
+  const key = typeof process.env.OPENAI_API_KEY === "string" ? process.env.OPENAI_API_KEY.trim() : "";
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  if (key.startsWith("sk-")) {
+    try {
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You write concise barbershop website copy. Output exactly two sentences. No quotation marks. Mention that an AI assistant can answer client calls and book appointments using the barber's prices. If a barbershop name and phones are provided, mention the shop name naturally and include contact numbers once.",
+            },
+            {
+              role: "user",
+              content: `Barber account name: ${barberName}. Public shop or brand name: ${shopTitle}.${phoneLine} Services and prices (USD): ${JSON.stringify(pricing)}`,
+            },
+          ],
+          max_tokens: 200,
+          temperature: 0.7,
+        }),
+      });
+      const data = await r.json();
+      const text = data?.choices?.[0]?.message?.content;
+      if (typeof text === "string" && text.trim()) {
+        return text.trim().replace(/^["']|["']$/g, "");
+      }
+    } catch (e) {
+      console.error("[studio] OpenAI blurb error:", e instanceof Error ? e.message : e);
+    }
+  }
+  if (!pricing.length) {
+    const contact = integ.shopPhones.length ? ` Reach us at ${integ.shopPhones.join(" or ")}.` : "";
+    return `${shopTitle} uses ClipFlow — set your services and prices, then let AI handle client calls and bookings.${contact}`;
+  }
+  const bits = pricing.slice(0, 4).map((p) => `${p.name} ($${p.price})`);
+  const contact = integ.shopPhones.length ? ` Call ${shopTitle}: ${integ.shopPhones.join(", ")}.` : "";
+  return `${shopTitle}: ${bits.join(", ")}.${contact} AI answers client calls and schedules appointments using your menu — update anytime and sync to your page.`;
+}
 
 let cachedIndexHtml = null;
 function loadIndexTemplate() {
@@ -460,6 +771,73 @@ app.post(
   }
 );
 
+/**
+ * Twilio Voice + SMS webhooks (application/x-www-form-urlencoded).
+ * Configure in Twilio Console → your number → Voice URL / Messaging → same host + path.
+ * Set PUBLIC_API_URL=https://your-api.onrender.com so signature validation matches the public URL.
+ */
+app.post(
+  "/webhooks/twilio/voice",
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    try {
+      if (!validateTwilioWebhookRequest(req)) {
+        return res.status(403).type("text/plain").send("Forbidden");
+      }
+      const to = typeof req.body.To === "string" ? req.body.To : "";
+      const userId = findUserIdByTwilioTo(to);
+      if (userId == null) {
+        const VoiceResponse = twilioPkg.twiml.VoiceResponse;
+        const vr = new VoiceResponse();
+        vr.say("This number is not linked to a ClipFlow barber yet.");
+        vr.hangup();
+        return res.type("text/xml").send(vr.toString());
+      }
+      if (!subscriptionIsActiveForUserId(userId)) {
+        const VoiceResponse = twilioPkg.twiml.VoiceResponse;
+        const vr = new VoiceResponse();
+        vr.say("This ClipFlow line is paused. Please try again later.");
+        vr.hangup();
+        return res.type("text/xml").send(vr.toString());
+      }
+      return res.type("text/xml").send(buildVoiceTwiML(userId));
+    } catch (e) {
+      console.error("[twilio voice]", e instanceof Error ? e.message : e);
+      return res.status(500).type("text/plain").send("Error");
+    }
+  }
+);
+
+app.post(
+  "/webhooks/twilio/sms",
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    try {
+      if (!validateTwilioWebhookRequest(req)) {
+        return res.status(403).type("text/plain").send("Forbidden");
+      }
+      const to = typeof req.body.To === "string" ? req.body.To : "";
+      const userId = findUserIdByTwilioTo(to);
+      if (userId == null) {
+        const MessagingResponse = twilioPkg.twiml.MessagingResponse;
+        const mr = new MessagingResponse();
+        mr.message("This number is not linked to ClipFlow yet.");
+        return res.type("text/xml").send(mr.toString());
+      }
+      if (!subscriptionIsActiveForUserId(userId)) {
+        const MessagingResponse = twilioPkg.twiml.MessagingResponse;
+        const mr = new MessagingResponse();
+        mr.message("This ClipFlow line is paused.");
+        return res.type("text/xml").send(mr.toString());
+      }
+      return res.type("text/xml").send(buildSmsTwiML(userId));
+    } catch (e) {
+      console.error("[twilio sms]", e instanceof Error ? e.message : e);
+      return res.status(500).type("text/plain").send("Error");
+    }
+  }
+);
+
 // Mobile apps and web clients sending JSON (must be after webhook raw body route)
 app.use(express.json({ limit: "1mb" }));
 
@@ -667,6 +1045,234 @@ app.get("/subscription-status", (req, res) => {
     return res.status(404).json({ detail: "User not found." });
   }
   return res.json({ subscription_status: row.subscription_status || "" });
+});
+
+/**
+ * GET /studio — barber pricing + AI flags + last published blurb (same Bearer as GET /me).
+ */
+app.get("/studio", (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({
+      detail: "Missing or invalid Authorization. Send: Bearer demo-token-<userId> (from POST /login).",
+    });
+  }
+  const row = db.prepare(`SELECT * FROM barber_studio WHERE user_id = ?`).get(userId);
+  if (!row) {
+    return res.json({
+      pricing: [],
+      ai: normalizeAiInput(null),
+      publishedBlurb: "",
+      integrations: normalizeIntegrationsInput(null),
+      updatedAt: null,
+    });
+  }
+  const pricing = parseJsonSafe(row.pricing_json, []);
+  const ai = normalizeAiInput(parseJsonSafe(row.ai_json, {}));
+  const integrations = normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {}));
+  return res.json({
+    pricing: Array.isArray(pricing) ? pricing : [],
+    ai,
+    publishedBlurb: row.published_blurb || "",
+    integrations,
+    updatedAt: row.updated_at || null,
+  });
+});
+
+/**
+ * PATCH /studio — save pricing + AI assistant toggles (ClipFlow Pro only).
+ */
+app.patch("/studio", (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({
+      detail: "Missing or invalid Authorization.",
+    });
+  }
+  if (!subscriptionIsActiveForUserId(userId)) {
+    return res.status(403).json({ detail: "ClipFlow Pro is required to save studio and AI settings." });
+  }
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const existing = db.prepare(`SELECT * FROM barber_studio WHERE user_id = ?`).get(userId);
+  let pricing = existing ? parseJsonSafe(existing.pricing_json, []) : [];
+  let ai = existing ? normalizeAiInput(parseJsonSafe(existing.ai_json, {})) : normalizeAiInput(null);
+  let integrations = existing
+    ? normalizeIntegrationsInput(parseJsonSafe(existing.integrations_json, {}))
+    : normalizeIntegrationsInput(null);
+  if (Array.isArray(body.pricing)) {
+    pricing = normalizePricingInput(body.pricing);
+  }
+  if (body.ai && typeof body.ai === "object") {
+    ai = normalizeAiInput({ ...ai, ...body.ai });
+  }
+  if (body.integrations && typeof body.integrations === "object") {
+    integrations = normalizeIntegrationsInput({ ...integrations, ...body.integrations });
+  }
+  const now = new Date().toISOString();
+  const pricingJson = JSON.stringify(pricing);
+  const aiJson = JSON.stringify(ai);
+  const integrationsJson = JSON.stringify(integrations);
+  const prevRow = db.prepare(`SELECT published_blurb FROM barber_studio WHERE user_id = ?`).get(userId);
+  const keepBlurb = prevRow && typeof prevRow.published_blurb === "string" ? prevRow.published_blurb : "";
+  db.prepare(
+    `INSERT INTO barber_studio (user_id, pricing_json, ai_json, published_blurb, updated_at, integrations_json)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       pricing_json = excluded.pricing_json,
+       ai_json = excluded.ai_json,
+       integrations_json = excluded.integrations_json,
+       updated_at = excluded.updated_at`
+  ).run(userId, pricingJson, aiJson, keepBlurb, now, integrationsJson);
+
+  const row = db.prepare(`SELECT * FROM barber_studio WHERE user_id = ?`).get(userId);
+  return res.json({
+    ok: true,
+    pricing: parseJsonSafe(row.pricing_json, []),
+    ai: normalizeAiInput(parseJsonSafe(row.ai_json, {})),
+    publishedBlurb: row.published_blurb || "",
+    integrations: normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {})),
+    updatedAt: row.updated_at,
+  });
+});
+
+/**
+ * POST /studio/publish-ai — regenerate site blurb from saved prices (Pro). Uses OPENAI_API_KEY when set.
+ */
+app.post("/studio/publish-ai", async (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({ detail: "Missing or invalid Authorization." });
+  }
+  if (!subscriptionIsActiveForUserId(userId)) {
+    return res.status(403).json({ detail: "ClipFlow Pro is required to publish AI copy." });
+  }
+  const u = db.prepare(`SELECT name FROM users WHERE id = ?`).get(userId);
+  const barberName = u && typeof u.name === "string" && u.name.trim() ? u.name.trim() : "Your shop";
+  const row = db.prepare(`SELECT * FROM barber_studio WHERE user_id = ?`).get(userId);
+  const pricing = row ? parseJsonSafe(row.pricing_json, []) : [];
+  const integForBlurb = row
+    ? normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {}))
+    : normalizeIntegrationsInput(null);
+  const blurb = await generatePublishedBlurbFromStudio(
+    barberName,
+    Array.isArray(pricing) ? pricing : [],
+    integForBlurb
+  );
+  const now = new Date().toISOString();
+  const pj = row && typeof row.pricing_json === "string" ? row.pricing_json : "[]";
+  const aj = row && typeof row.ai_json === "string" ? row.ai_json : "{}";
+  const ij = row && typeof row.integrations_json === "string" ? row.integrations_json : "{}";
+  db.prepare(
+    `INSERT INTO barber_studio (user_id, pricing_json, ai_json, published_blurb, updated_at, integrations_json)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       published_blurb = excluded.published_blurb,
+       updated_at = excluded.updated_at`
+  ).run(userId, pj, aj, blurb, now, ij);
+  return res.json({
+    ok: true,
+    publishedBlurb: blurb,
+    updatedAt: now,
+    usedOpenAI:
+      typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim().startsWith("sk-"),
+  });
+});
+
+/**
+ * GET /studio/calendar-preview — fetch saved iCal URL and return a few raw VEVENT lines (Pro).
+ */
+app.get("/studio/calendar-preview", async (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({
+      detail: "Missing or invalid Authorization. Send: Bearer demo-token-<userId> (from POST /login).",
+    });
+  }
+  if (!subscriptionIsActiveForUserId(userId)) {
+    return res.status(403).json({ detail: "ClipFlow Pro is required to preview calendar feeds." });
+  }
+  const row = db.prepare(`SELECT integrations_json FROM barber_studio WHERE user_id = ?`).get(userId);
+  const integ = row
+    ? normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {}))
+    : normalizeIntegrationsInput(null);
+  const url = integ.calendarIcsUrl;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return res.json({
+      ok: false,
+      detail: "Add a public http(s) iCal link in Studio → integrations, then save.",
+      events: [],
+    });
+  }
+  try {
+    const r = await fetch(url, {
+      redirect: "follow",
+      headers: { "User-Agent": "ClipFlow-Calendar-Preview/1" },
+    });
+    if (!r.ok) {
+      return res.status(502).json({ detail: `Calendar feed returned HTTP ${r.status}`, events: [] });
+    }
+    const text = await r.text();
+    const events = parseIcsEventsRough(text, 8);
+    return res.json({ ok: true, events });
+  } catch (e) {
+    return res.status(502).json({
+      detail: e instanceof Error ? e.message : "Unable to fetch calendar",
+      events: [],
+    });
+  }
+});
+
+/**
+ * POST /studio/sms-test — send one SMS via Twilio from the barber's saved Twilio number (Pro).
+ * Body: { toE164: "+1...", body?: "optional" }
+ */
+app.post("/studio/sms-test", async (req, res) => {
+  const userId = userIdFromDemoBearer(req);
+  if (userId == null) {
+    return res.status(401).json({ detail: "Missing or invalid Authorization." });
+  }
+  if (!subscriptionIsActiveForUserId(userId)) {
+    return res.status(403).json({ detail: "ClipFlow Pro is required." });
+  }
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const to = typeof body.toE164 === "string" ? body.toE164.trim() : "";
+  if (!to || !/^\+[1-9]\d{6,14}$/.test(to)) {
+    return res.status(422).json({ detail: "toE164 must be E.164, e.g. +15551234567" });
+  }
+  const accountSid =
+    typeof process.env.TWILIO_ACCOUNT_SID === "string" ? process.env.TWILIO_ACCOUNT_SID.trim() : "";
+  const authToken =
+    typeof process.env.TWILIO_AUTH_TOKEN === "string" ? process.env.TWILIO_AUTH_TOKEN.trim() : "";
+  if (!accountSid.startsWith("AC") || !authToken) {
+    return res.status(503).json({
+      detail: "SMS not configured: set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN on the API host.",
+    });
+  }
+  const row = db.prepare(`SELECT integrations_json FROM barber_studio WHERE user_id = ?`).get(userId);
+  const integ = row
+    ? normalizeIntegrationsInput(parseJsonSafe(row.integrations_json, {}))
+    : normalizeIntegrationsInput(null);
+  const fromNum = integ.twilioVoiceNumberE164.trim();
+  if (!fromNum.startsWith("+")) {
+    return res.status(422).json({
+      detail: "Save your Twilio phone number (E.164) in Studio integrations before sending SMS.",
+    });
+  }
+  const client = twilioPkg(accountSid, authToken);
+  const msgBody =
+    typeof body.body === "string" && body.body.trim()
+      ? body.body.trim().slice(0, 320)
+      : "ClipFlow: SMS test from your studio line.";
+  try {
+    const msg = await client.messages.create({
+      from: fromNum,
+      to,
+      body: msgBody,
+    });
+    return res.json({ ok: true, sid: msg.sid });
+  } catch (e) {
+    return res.status(502).json({ detail: e instanceof Error ? e.message : "Twilio error" });
+  }
 });
 
 const BOOK_PATHS = [

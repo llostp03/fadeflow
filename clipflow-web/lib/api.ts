@@ -179,6 +179,138 @@ export async function createCheckoutSession(token: string) {
  * POST /confirm-paid-checkout — unlocks Pro using Stripe session id (fallback if webhooks did not run).
  * Requires the same Bearer token as checkout; session metadata must match this user.
  */
+export type StudioPricingRow = {
+  id: string;
+  name: string;
+  price: number;
+  durationMins?: number;
+};
+
+export type StudioAiSettings = {
+  answerClientCalls: boolean;
+  manageBookings: boolean;
+  clientCallHours: string;
+  smsReminder: boolean;
+};
+
+/** Shop identity, Twilio number, public iCal link — saved with PATCH /studio. */
+export type StudioIntegrations = {
+  /** Public-facing barbershop name (AI + Twilio use this when set). */
+  barbershopName: string;
+  /** Up to four client-facing lines (E.164 or formatted); used in AI copy and Twilio prompts. */
+  shopPhones: string[];
+  twilioVoiceNumberE164: string;
+  calendarIcsUrl: string;
+};
+
+export type StudioPayload = {
+  pricing: StudioPricingRow[];
+  ai: StudioAiSettings;
+  publishedBlurb: string;
+  integrations: StudioIntegrations;
+  updatedAt: string | null;
+};
+
+export async function getStudio(token: string): Promise<StudioPayload> {
+  const res = await fetch(`${API_BASE}/studio`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    throw new Error(detailFromApiResponse(data, res, "Unable to load studio."));
+  }
+  return data as StudioPayload;
+}
+
+export async function patchStudio(
+  token: string,
+  body: {
+    pricing?: StudioPricingRow[];
+    ai?: Partial<StudioAiSettings>;
+    integrations?: Partial<StudioIntegrations>;
+  }
+): Promise<StudioPayload & { ok?: boolean }> {
+  const res = await fetch(`${API_BASE}/studio`, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    throw new Error(detailFromApiResponse(data, res, "Unable to save studio."));
+  }
+  return data as StudioPayload & { ok?: boolean };
+}
+
+export async function publishStudioAi(token: string): Promise<{
+  ok?: boolean;
+  publishedBlurb: string;
+  updatedAt: string;
+  usedOpenAI?: boolean;
+}> {
+  const res = await fetch(`${API_BASE}/studio/publish-ai`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    throw new Error(detailFromApiResponse(data, res, "Unable to publish AI copy."));
+  }
+  return data as { ok?: boolean; publishedBlurb: string; updatedAt: string; usedOpenAI?: boolean };
+}
+
+export type CalendarPreviewEvent = { summary: string; rawStart: string };
+
+export async function getStudioCalendarPreview(token: string): Promise<{
+  ok: boolean;
+  detail?: string;
+  events: CalendarPreviewEvent[];
+}> {
+  const res = await fetch(`${API_BASE}/studio/calendar-preview`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    throw new Error(detailFromApiResponse(data, res, "Unable to preview calendar."));
+  }
+  return data as { ok: boolean; detail?: string; events: CalendarPreviewEvent[] };
+}
+
+export async function postStudioSmsTest(
+  token: string,
+  payload: { toE164: string; body?: string }
+): Promise<{ ok: boolean; sid?: string }> {
+  const res = await fetch(`${API_BASE}/studio/sms-test`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJsonSafe(res);
+  if (!res.ok) {
+    throw new Error(detailFromApiResponse(data, res, "Unable to send SMS."));
+  }
+  return data as { ok: boolean; sid?: string };
+}
+
 export async function confirmPaidCheckout(token: string, sessionId: string) {
   const res = await fetch(`${API_BASE}/confirm-paid-checkout`, {
     method: "POST",
