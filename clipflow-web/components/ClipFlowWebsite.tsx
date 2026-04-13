@@ -172,6 +172,7 @@ export default function ClipFlowWebsite() {
     }
   }, []);
 
+  /** Single GET /me on mount — avoids a race when two parallel loads run after Stripe (stale paywall). */
   useEffect(() => {
     const saved = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
     if (!saved) {
@@ -179,35 +180,47 @@ export default function ClipFlowWebsite() {
       return;
     }
 
+    let cancelled = false;
     setToken(saved);
 
-    getMe(saved)
-      .then((user) => {
+    void (async () => {
+      try {
+        const user = await getMe(saved);
+        if (cancelled) return;
         setCurrentUser(user);
         setMeUser(user);
         setEmail(user.email);
         setName(user.name?.trim() || "ClipFlow Barber");
-      })
-      .catch(() => {
+      } catch {
+        if (cancelled) return;
         window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
         setToken(null);
         setCurrentUser(null);
         setMeUser(null);
-      })
-      .finally(() => {
-        setMeLoading(false);
-      });
+      } finally {
+        if (!cancelled) setMeLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     const onFocus = () => void refreshAccount();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshAccount();
+    };
     const onStorage = (e: StorageEvent) => {
       if (e.key === AUTH_TOKEN_STORAGE_KEY || e.key === null) void refreshAccount();
     };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("storage", onStorage);
     };
   }, [refreshAccount]);
@@ -325,7 +338,7 @@ export default function ClipFlowWebsite() {
   };
 
   const handleLogout = () => {
-    window.localStorage.removeItem("clipflow_token");
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     setToken(null);
     setCurrentUser(null);
     setMeUser(null);
@@ -340,7 +353,8 @@ export default function ClipFlowWebsite() {
 
   const signedInUser = meUser ?? currentUser;
   const isLoggedIn = !!signedInUser;
-  const sub = String(meUser?.subscription_status ?? "").trim().toLowerCase();
+  // Use signedInUser (meUser ?? currentUser) so Pro state matches GET /me after refresh; both are set by getMe.
+  const sub = String(signedInUser?.subscription_status ?? "").trim().toLowerCase();
   const subscriptionActive = sub === "active";
 
   const handleUpgrade = async () => {

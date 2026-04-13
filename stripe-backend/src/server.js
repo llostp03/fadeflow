@@ -463,6 +463,22 @@ app.post(
 // Mobile apps and web clients sending JSON (must be after webhook raw body route)
 app.use(express.json({ limit: "1mb" }));
 
+/**
+ * Map `/api/me` → `/me`, `/api/login` → `/login`, etc. Some clients set API base to `https://host/api`.
+ * Must run before route definitions below.
+ */
+app.use((req, res, next) => {
+  const u = req.url || "/";
+  if (u === "/api") {
+    req.url = "/";
+  } else if (u.startsWith("/api?")) {
+    req.url = `/${u.slice(4)}`;
+  } else if (u.startsWith("/api/")) {
+    req.url = `/${u.slice(5)}`;
+  }
+  next();
+});
+
 // Health check for deploy platforms
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

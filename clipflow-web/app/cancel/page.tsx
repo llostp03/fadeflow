@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function CancelPage() {
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
@@ -8,12 +10,12 @@ export default function CancelPage() {
         <p className="text-zinc-300">
           No worries. Your account is still there, and you can unlock ClipFlow Pro anytime.
         </p>
-        <a
+        <Link
           href="/"
           className="inline-block rounded-2xl border border-white/15 px-6 py-3 font-bold text-white"
         >
           Back to ClipFlow
-        </a>
+        </Link>
       </div>
     </div>
   );

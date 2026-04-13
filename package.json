@@ -1,10 +1,13 @@
 {
   "name": "fadeflow",
   "private": true,
-  "description": "Monorepo root — Render: Settings → Root Directory = stripe-backend (see render.yaml). Local: npm start cds into stripe-backend.",
+  "description": "Monorepo root. Render: Root Directory = stripe-backend. Vercel: either set Project Root Directory to clipflow-web (and remove root vercel.json), or keep root vercel.json for builds from repo root.",
   "scripts": {
-    "postinstall": "cd stripe-backend && npm install",
+    "postinstall": "node scripts/root-postinstall.cjs",
     "start": "cd stripe-backend && npm start",
     "build": "cd stripe-backend && npm install"
+  },
+  "dependencies": {
+    "next": "16.2.3"
   }
 }

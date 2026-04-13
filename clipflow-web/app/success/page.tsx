@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, startTransition } from "react";
 import Link from "next/link";
 import {
   AUTH_TOKEN_STORAGE_KEY,
@@ -42,7 +42,7 @@ export default function SuccessPage() {
         : null;
 
     if (!token) {
-      setPhase("no_token");
+      startTransition(() => setPhase("no_token"));
       return;
     }
 
@@ -54,7 +54,17 @@ export default function SuccessPage() {
     const poll = async () => {
       if (sessionId) {
         try {
-          await confirmPaidCheckout(token, sessionId);
+          const confirmed = await confirmPaidCheckout(token, sessionId);
+          if (
+            !cancelled &&
+            (confirmed?.ok === true ||
+              isActiveSubscription(
+                (confirmed as { subscription_status?: string })?.subscription_status
+              ))
+          ) {
+            setPhase("unlocked");
+            return;
+          }
         } catch (e) {
           if (!cancelled) {
             setCheckError(e instanceof Error ? e.message : "Could not confirm payment with server.");
@@ -97,7 +107,16 @@ export default function SuccessPage() {
     if (sessionId) {
       sessionStorage.setItem(CHECKOUT_SESSION_STORAGE_KEY, sessionId);
       try {
-        await confirmPaidCheckout(token, sessionId);
+        const confirmed = await confirmPaidCheckout(token, sessionId);
+        if (
+          confirmed?.ok === true ||
+          isActiveSubscription(
+            (confirmed as { subscription_status?: string })?.subscription_status
+          )
+        ) {
+          setPhase("unlocked");
+          return;
+        }
       } catch (e) {
         setCheckError(e instanceof Error ? e.message : "Confirm failed.");
       }
